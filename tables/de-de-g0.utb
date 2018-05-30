@@ -48,6 +48,7 @@
 
 
 include de-eurobrl6.dis
+include basic-spaces.uti
 include de-chardefs6.cti
 include de-de-accents.cti
 include de-g0-core.uti

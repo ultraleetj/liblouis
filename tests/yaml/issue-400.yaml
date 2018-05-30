@@ -2,6 +2,7 @@ table: |
   display , 6
   display # 3456
   display ; 56
+  include tables/basic-spaces.uti
   include tables/latinLetterDef6Dots.uti
   include tables/digits6Dots.uti
   include tables/litdigits6Dots.uti
@@ -57,6 +58,7 @@ table: |
   display ; 56
   display . 5
   sign % 123456
+  include tables/basic-spaces.uti
   include tables/latinLetterDef6Dots.uti
   include tables/digits6Dots.uti
   include tables/litdigits6Dots.uti
@@ -90,6 +92,7 @@ table: |
   display ; 56
   display . 5
   sign % 123456
+  include tables/basic-spaces.uti
   include tables/latinLetterDef6Dots.uti
   include tables/digits6Dots.uti
   include tables/litdigits6Dots.uti

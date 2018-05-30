@@ -1,6 +1,7 @@
+# This file will produce Unicode Braille output.
+# Use it as the first file in a table list.
 #
-#  Copyright (C) 2011 by Bert Frees <bertfrees@gmail.com>
-#  Copyright (C) 2011 by Jan Halousek <merit@login.cz>
+#  Copyright (C) 2010 JJB Software, Inc. www.jjb-software.com
 #
 #  This file is part of liblouis.
 #
@@ -17,21 +18,7 @@
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with liblouis. If not, see
 #  <http://www.gnu.org/licenses/>.
-#
-#--------------------------------------------------------------------------------
-#
-#  Czech Braille
-#
-#     Created and maintained by Bert Frees <bertfrees@gmail.com>
-#                               Jan Halousek <merit@login.cz>
-#
-#     Based on the official Czech Braille Standard
-# -------------------------------------------------------------------------------
 
-include basic-spaces.uti
-
-include cs-chardefs.cti
-include braille-patterns.cti
-include cs-translation.cti
-
-# -------------------------------------------------------------------------------
+display \s 0
+include unicode.dis
+display \x2800 0

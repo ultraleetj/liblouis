@@ -9,6 +9,7 @@ table_files = \
 	as.tbl \
 	awa.tbl \
 	aw-in-g1.utb \
+	basic-spaces.uti \
 	be-in-g1.utb \
 	bengali.cti \
 	bg.ctb \
@@ -352,6 +353,7 @@ table_files = \
 	unicode-braille.utb \
 	unicodedefs.cti \
 	unicode.dis \
+	unicode-without-blank.dis \
 	uni-text.dis \
 	ur-pk-g1.utb \
 	ur-pk-g2.ctb \
