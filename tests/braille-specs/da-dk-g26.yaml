@@ -449,13 +449,6 @@ tests:
   - ["~X |Z", "⠘⠠⠨⠠⠭ ⠘⠸⠨⠠⠵"]
   - ["5É", "⠼⠑⠨⠐⠑"]
 
-
-table:
-  locale: da
-  grade: 2
-  dots: 6
-  direction: both
-  __assert-match: da-dk-g26.ctb
 flags: {testmode: backward}
 tests:
 # Test characters
@@ -806,7 +799,7 @@ tests:
   - ["⠠⠖⠨⠖", "!Fra"]
   - ["⠖⠋⠗⠁", "!fra"]
   - ["⠈⠨⠴", "'Af"]
-  - ["⠈⠁⠋", "\'af"]
+  - ["⠈⠁⠋", "'af"]
 
 # No single cell contractions before or after dashes
 

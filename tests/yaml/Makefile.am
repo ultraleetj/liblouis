@@ -11,6 +11,7 @@ EXTRA_DIST =					\
 	emphasis-no-context.yaml		\
 	example_test.yaml			\
 	foo.yaml				\
+	hyphenation_nocross_harness.yaml		\
 	inpos_outpos.yaml			\
 	issue-238.yaml				\
 	issue-35.yaml				\
@@ -22,6 +23,8 @@ EXTRA_DIST =					\
 	issue-479.yaml				\
 	issue-498.yaml				\
 	issue-537.yaml				\
+	issue-583.yaml				\
+	issue-584.yaml				\
 	issue-77.yaml 				\
 	letterDefTest_harness.yaml		\
 	multipass-backward.yaml			\
@@ -29,6 +32,5 @@ EXTRA_DIST =					\
 	multipass.yaml				\
 	multipass-negation.yaml			\
 	new_emph.yaml				\
-	nocross_harness.yaml			\
 	noletsignafter.yaml			\
 	syllable.yaml

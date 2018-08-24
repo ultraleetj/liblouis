@@ -145,7 +145,10 @@ static const char *opcodeNames[CTO_None] = {
 static short gOpcodeLengths[CTO_None] = { 0 };
 
 static void
-compileError(FileInfo *nested, char *format, ...);
+compileError(FileInfo *nested, const char *format, ...);
+
+static void
+free_tablefiles(char **tables);
 
 static int
 getAChar(FileInfo *nested) {
@@ -261,7 +264,7 @@ getToken(FileInfo *nested, CharsString *result, const char *description, int *la
 }
 
 static void
-compileError(FileInfo *nested, char *format, ...) {
+compileError(FileInfo *nested, const char *format, ...) {
 #ifndef __SYMBIAN32__
 	char buffer[MAXSTRING];
 	va_list arguments;
@@ -278,7 +281,7 @@ compileError(FileInfo *nested, char *format, ...) {
 }
 
 static void
-compileWarning(FileInfo *nested, char *format, ...) {
+compileWarning(FileInfo *nested, const char *format, ...) {
 #ifndef __SYMBIAN32__
 	char buffer[MAXSTRING];
 	va_list arguments;
@@ -1015,7 +1018,7 @@ _lou_findOpcodeName(TranslationTableOpcode opcode) {
 	static char scratchBuf[MAXSTRING];
 	/* Used by tools such as lou_debug */
 	if (opcode < 0 || opcode >= CTO_None) {
-		sprintf(scratchBuf, "%d", opcode);
+		sprintf(scratchBuf, "%u", opcode);
 		return scratchBuf;
 	}
 	return opcodeNames[opcode];
@@ -1124,11 +1127,11 @@ parseChars(FileInfo *nested, CharsString *result, CharsString *token) {
 				}
 				in++;
 			}
-			result->chars[out++] = (widechar)ch;
 			if (out >= MAXSTRING) {
 				result->length = out;
 				return 1;
 			}
+			result->chars[out++] = (widechar)ch;
 			continue;
 		}
 		lastOutSize = out;
@@ -1138,6 +1141,10 @@ parseChars(FileInfo *nested, CharsString *result, CharsString *token) {
 		utf32 = ch & (0XFF - first0Bit[numBytes]);
 		for (k = 0; k < numBytes; k++) {
 			if (in >= MAXSTRING) break;
+			if (out >= MAXSTRING) {
+				result->length = lastOutSize;
+				return 1;
+			}
 			if (token->chars[in] < 128 || (token->chars[in] & 0x0040)) {
 				compileWarning(nested, "invalid UTF-8. Assuming Latin-1.");
 				result->chars[out++] = token->chars[lastIn];
@@ -1146,12 +1153,12 @@ parseChars(FileInfo *nested, CharsString *result, CharsString *token) {
 			}
 			utf32 = (utf32 << 6) + (token->chars[in++] & 0x3f);
 		}
-		if (CHARSIZE == 2 && utf32 > 0xffff) utf32 = 0xffff;
-		result->chars[out++] = (widechar)utf32;
 		if (out >= MAXSTRING) {
 			result->length = lastOutSize;
 			return 1;
 		}
+		if (CHARSIZE == 2 && utf32 > 0xffff) utf32 = 0xffff;
+		result->chars[out++] = (widechar)utf32;
 	}
 	result->length = out;
 	return 1;
@@ -2369,6 +2376,10 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 		passLine.chars[endTest] = pass_endTest;
 		passLinepos = 0;
 		while (passLinepos <= endTest) {
+			if (passIC >= MAXSTRING) {
+				compileError(passNested, "Test part in multipass operand too long");
+				return 0;
+			}
 			switch ((passSubOp = passLine.chars[passLinepos])) {
 			case pass_lookback:
 				passInstructions[passIC++] = pass_lookback;
@@ -2544,6 +2555,10 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 		while (passLinepos < passLine.length && passLine.chars[passLinepos] <= 32)
 			passLinepos++;
 		while (passLinepos < passLine.length && passLine.chars[passLinepos] > 32) {
+			if (passIC >= MAXSTRING) {
+				compileError(passNested, "Action part in multipass operand too long");
+				return 0;
+			}
 			switch ((passSubOp = passLine.chars[passLinepos])) {
 			case pass_string:
 				if (!verifyStringOrDots(nested, opcode, 1, 1, nofor)) {
@@ -2563,8 +2578,14 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 			actionDoCharsDots:
 				if (passHoldString.length == 0) return 0;
 				passInstructions[passIC++] = passHoldString.length;
-				for (kk = 0; kk < passHoldString.length; kk++)
+				for (kk = 0; kk < passHoldString.length; kk++) {
+					if (passIC >= MAXSTRING) {
+						compileError(passNested,
+								"@ operand in action part of multipass operand too long");
+						return 0;
+					}
 					passInstructions[passIC++] = passHoldString.chars[kk];
+				}
 				break;
 			case pass_variable:
 				passLinepos++;
@@ -2665,8 +2686,8 @@ compilePassOpcode(FileInfo *nested, TranslationTableOpcode opcode,
 /* End of multipass compiler */
 
 static int
-compileBrailleIndicator(FileInfo *nested, char *ermsg, TranslationTableOpcode opcode,
-		TranslationTableOffset *rule, int *lastToken,
+compileBrailleIndicator(FileInfo *nested, const char *ermsg,
+		TranslationTableOpcode opcode, TranslationTableOffset *rule, int *lastToken,
 		TranslationTableOffset *newRuleOffset, TranslationTableRule **newRule, int noback,
 		int nofor, TranslationTableHeader **table) {
 	CharsString token;
@@ -2970,7 +2991,7 @@ compileHyphenation(FileInfo *nested, CharsString *encoding, int *lastToken,
 	HyphenationTrans *holdPointer;
 	HyphenHashTab *hashTab;
 	CharsString word;
-	char pattern[MAXSTRING];
+	char pattern[MAXSTRING + 1];
 	unsigned int stateNum = 0, lastState = 0;
 	int i, j, k = encoding->length;
 	widechar ch;
@@ -4352,7 +4373,7 @@ resolveSubtable(const char *table, const char *base, const char *searchPath) {
 }
 
 char *EXPORT_CALL
-_lou_getTablePath() {
+_lou_getTablePath(void) {
 	char searchPath[MAXSTRING];
 	char *path;
 	char *cp;
@@ -4460,7 +4481,10 @@ copyStringArray(char **array) {
 
 char **EXPORT_CALL
 _lou_resolveTable(const char *tableList, const char *base) {
-	return copyStringArray((*tableResolver)(tableList, base));
+	char **tableFiles = (*tableResolver)(tableList, base);
+	char **result = copyStringArray(tableFiles);
+	if (tableResolver == &_lou_defaultTableResolver) free_tablefiles(tableFiles);
+	return result;
 }
 
 /**
@@ -4533,6 +4557,10 @@ includeFile(FileInfo *nested, CharsString *includedFile,
 	int rv;
 	for (k = 0; k < includedFile->length; k++)
 		includeThis[k] = (char)includedFile->chars[k];
+	if (k >= MAXSTRING) {
+		compileError(nested, "Include statement too long: 'include %s'", includeThis);
+		return 0;
+	}
 	includeThis[k] = 0;
 	tableFiles = _lou_resolveTable(includeThis, nested->fileName);
 	if (tableFiles == NULL) {
@@ -4540,9 +4568,8 @@ includeFile(FileInfo *nested, CharsString *includedFile,
 		return 0;
 	}
 	if (tableFiles[1] != NULL) {
-		errorCount++;
 		free_tablefiles(tableFiles);
-		_lou_logMessage(LOG_ERROR,
+		compileError(nested,
 				"Table list not supported in include statement: 'include %s'",
 				includeThis);
 		return 0;
