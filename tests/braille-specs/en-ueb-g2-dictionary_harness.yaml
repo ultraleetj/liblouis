@@ -1,4 +1,4 @@
-display: unicode.dis
+display: unicode-without-blank.dis
 table:
   locale: en
   grade: 2
@@ -77919,6 +77919,7 @@ tests:
   - [revenue, ⠗⠑⠧⠢⠥⠑]
   - [revenue's, ⠗⠑⠧⠢⠥⠑⠄⠎]
   - [revenues, ⠗⠑⠧⠢⠥⠑⠎]
+  - [reverb, ⠗⠑⠧⠻⠃]
   - [reverberate, ⠗⠑⠧⠻⠃⠻⠁⠞⠑]
   - [reverberated, ⠗⠑⠧⠻⠃⠻⠁⠞⠫]
   - [reverberates, ⠗⠑⠧⠻⠃⠻⠁⠞⠑⠎]

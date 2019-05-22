@@ -3,12 +3,14 @@
 table_files = \
 	afr-za-g1.ctb \
 	ar-ar-g1.utb \
-	ar-fa.utb \
+	ar-ar-g2.ctb \
+	ar-ar-comp8.utb \
 	ar.tbl \
 	as-in-g1.utb \
 	as.tbl \
 	awa.tbl \
 	aw-in-g1.utb \
+	spaces.uti \
 	be-in-g1.utb \
 	bengali.cti \
 	bg.ctb \
@@ -25,7 +27,7 @@ table_files = \
 	ca-chardefs.cti \
 	ca-g1.ctb \
 	ca.tbl \
-	chardefs.cti \
+	en-chardefs.cti \
 	chr-us-g1.ctb \
 	ckb-chardefs.cti \
 	ckb-g1.ctb \
@@ -58,26 +60,23 @@ table_files = \
 	da-dk-g28l.ctb \
 	da-dk-octobraille.dis \
 	da-lt.ctb \
-	de-ch-accents.cti \
+	de-accents.cti \
+	de-accents-detailed.cti \
 	de-chardefs6.cti \
 	de-chardefs8.cti \
 	de-chess.ctb \
-	de-ch-g0.utb \
-	de-ch-g1.ctb \
-	de-ch-g2.ctb \
-	de_CH.tbl \
-	de-de-accents.cti \
 	de-de-comp8.ctb \
 	de-de.dis \
-	de-de-g0.utb \
-	de-de-g1.ctb \
-	de-de-g2.ctb \
 	de-eurobrl6.dis \
 	de-eurobrl6u.dis \
 	de-g0-core.uti \
+	de-g0.utb \
 	de-g1-core.cti \
+	de-g1-core-patterns.dic \
+	de-g1.ctb \
 	de-g2-core.cti \
-	de.tbl \
+	de-g2-core-patterns.dic \
+	de-g2.ctb \
 	devanagari.cti \
 	digits6DotsPlusDot6.uti \
 	digits6Dots.uti \
@@ -114,13 +113,11 @@ table_files = \
 	eo.tbl \
 	es-chardefs.cti \
 	Es-Es-G0.utb \
-	Es-Es-g1.utb \
 	es-g1.ctb \
 	es-g2.ctb \
 	es-new.dis \
 	es-old.dis \
 	es.tbl \
-	es-translation.cti \
 	et.ctb \
 	et-g0.utb \
 	ethio-g1.ctb \
@@ -321,7 +318,6 @@ table_files = \
 	sl-si-g1.utb \
 	sl.tbl \
 	sot-za-g1.ctb \
-	spaces.ctb \
 	sr-chardefs.cti \
 	sr-g1.ctb \
 	sr.tbl \
@@ -338,6 +334,8 @@ table_files = \
 	text_nabcc.dis \
 	tr.ctb \
 	tr-g1.ctb \
+	tr-g2.ctb \
+	tr-g2.tbl \
 	tr.tbl \
 	tsn-za-g1.ctb \
 	uk.utb \
@@ -347,6 +345,7 @@ table_files = \
 	unicode-braille.utb \
 	unicodedefs.cti \
 	unicode.dis \
+	unicode-without-blank.dis \
 	uni-text.dis \
 	ur-pk-g1.utb \
 	ur-pk-g2.ctb \
