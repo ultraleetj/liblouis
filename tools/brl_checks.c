@@ -146,13 +146,13 @@ check_base(const char *tableList, const char *input, const char *expected,
 		// provided a too short output buffer.
 		for (int k = 1; k <= 3; k++) {
 			if (direction == 1) {
-				funcStatus = lou_backTranslate(tableList, inbuf, &actualInlen, outbuf,
-						&outlen, typeformbuf, NULL, outputPos, inputPos, &cursorPos,
-						in.mode);
+				funcStatus = _lou_backTranslate(tableList, in.display_table, inbuf,
+						&actualInlen, outbuf, &outlen, typeformbuf, NULL, outputPos,
+						inputPos, &cursorPos, in.mode, NULL, NULL);
 			} else {
-				funcStatus = lou_translate(tableList, inbuf, &actualInlen, outbuf,
-						&outlen, typeformbuf, NULL, outputPos, inputPos, &cursorPos,
-						in.mode);
+				funcStatus = _lou_translate(tableList, in.display_table, inbuf,
+						&actualInlen, outbuf, &outlen, typeformbuf, NULL, outputPos,
+						inputPos, &cursorPos, in.mode, NULL, NULL);
 			}
 			if (!funcStatus) {
 				fprintf(stderr, "Translation failed.\n");
@@ -294,14 +294,6 @@ check_base(const char *tableList, const char *input, const char *expected,
 						actualInlen);
 			}
 		}
-		// on error print the table name, as it isn't always
-		// clear which table we are testing. In checkyaml for
-		// example you can define a test for multiple tables.
-		if (retval != 0 && in.diagnostics) {
-			fprintf(stderr, "Table: %s\n", tableList);
-			// add an empty line after each error
-			fprintf(stderr, "\n");
-		}
 
 	fail:
 		free(inbuf);
@@ -390,6 +382,95 @@ fail:
 	return retval;
 }
 
+/** Check if a display table maps characters to the right dots.
+ *
+ * The dots are read as Unicode braille. Multiple input characters are
+ * allowed to map to the same dot pattern. Virtual dots in the actual
+ * output are discarded.
+ *
+ * @return 0 if the result is as expected and 1 otherwise.
+ */
+int
+check_display(const char *displayTableList, const char *input, const char *expected) {
+	widechar *inbuf = NULL;
+	widechar *outbuf = NULL;
+	widechar *expectedbuf = NULL;
+	int retval = 0;
+	int inlen = strlen(input);
+	inbuf = malloc(sizeof(widechar) * inlen);
+	inlen = _lou_extParseChars(input, inbuf);
+	if (!inlen) {
+		fprintf(stderr, "Cannot parse input string.\n");
+		retval = 1;
+		goto fail;
+	}
+	int expectedlen = strlen(expected);
+	expectedbuf = malloc(sizeof(widechar) * expectedlen);
+	expectedlen = _lou_extParseChars(expected, expectedbuf);
+	if (!expectedlen) {
+		fprintf(stderr, "Cannot parse output string.\n");
+		retval = 1;
+		goto fail;
+	}
+	if (inlen != expectedlen) {
+		fprintf(stderr, "Input and output string must be the same length.\n");
+		retval = 1;
+		goto fail;
+	}
+	for (int i = 0; i < expectedlen; i++) {
+		if ((expectedbuf[i] & 0xff00) != LOU_ROW_BRAILLE) {
+			fprintf(stderr, "Output string must be Unicode braille.\n");
+			retval = 1;
+			goto fail;
+		}
+	}
+	outbuf = malloc(sizeof(widechar) * inlen);
+	if (!lou_charToDots(displayTableList, inbuf, outbuf, inlen, ucBrl)) {
+		// This should only happen if the table can not be compiled.
+		// If the table does not have a display rule for a character
+		// in the input, it will result in a blank dot pattern in the
+		// output.
+		fprintf(stderr, "Mapping to dots failed.\n");
+		retval = 1;
+		goto fail;
+	}
+	for (int i = 0; i < inlen; i++) {
+		if (outbuf[i] != expectedbuf[i]) {
+			retval = 1;
+			fprintf(stderr, "Input:    '%s'\n", input);
+			fprintf(stderr, "Expected: '%s'\n", expected);
+			fprintf(stderr, "Received: '");
+			print_widechars(outbuf, inlen);
+			fprintf(stderr, "'\n");
+			uint8_t *expected_utf8;
+			uint8_t *out_utf8;
+			size_t expected_utf8_len;
+			size_t out_utf8_len;
+#ifdef WIDECHARS_ARE_UCS4
+			expected_utf8 = u32_to_u8(&expectedbuf[i], 1, NULL, &expected_utf8_len);
+			out_utf8 = u32_to_u8(&outbuf[i], 1, NULL, &out_utf8_len);
+#else
+			expected_utf8 = u16_to_u8(&expectedbuf[i], 1, NULL, &expected_utf8_len);
+			out_utf8 = u16_to_u8(&outbuf[i], 1, NULL, &out_utf8_len);
+#endif
+			expectedbuf[i] = (expectedbuf[i] & 0x00ff) | LOU_DOTS;
+			outbuf[i] = (outbuf[i] & 0x00ff) | LOU_DOTS;
+			fprintf(stderr, "Diff:     Expected '%.*s' (dots %s)", (int)expected_utf8_len,
+					expected_utf8, _lou_showDots(&expectedbuf[i], 1));
+			fprintf(stderr, " but received '%.*s' (dots %s) in index %d\n",
+					(int)out_utf8_len, out_utf8, _lou_showDots(&outbuf[i], 1), i);
+			free(expected_utf8);
+			free(out_utf8);
+			break;
+		}
+	}
+fail:
+	free(inbuf);
+	free(outbuf);
+	free(expectedbuf);
+	return retval;
+}
+
 /* Check if a string is hyphenated as expected, by passing the
  * expected hyphenation position array.
  *
@@ -432,10 +513,13 @@ fail:
 
 /** Check if a string is hyphenated as expected.
  *
+ * mode is '0' when input is text and '1' when input is braille
+ *
  * @return 0 if the hyphenation is as expected and 1 otherwise.
  */
 int
-check_hyphenation(const char *tableList, const char *str, const char *expected) {
+check_hyphenation(
+		const char *tableList, const char *str, const char *expected, int mode) {
 	widechar *inbuf;
 	widechar *hyphenatedbuf = NULL;
 	uint8_t *hyphenated = NULL;
@@ -453,7 +537,7 @@ check_hyphenation(const char *tableList, const char *str, const char *expected) 
 	}
 	hyphens = calloc(inlen + 1, sizeof(char));
 
-	if (!lou_hyphenate(tableList, inbuf, inlen, hyphens, 0)) {
+	if (!lou_hyphenate(tableList, inbuf, inlen, hyphens, mode)) {
 		fprintf(stderr, "Hyphenation failed.\n");
 		retval = 1;
 		goto fail;
@@ -469,7 +553,10 @@ check_hyphenation(const char *tableList, const char *str, const char *expected) 
 	int j = 0;
 	hyphenatedbuf[i++] = inbuf[j++];
 	for (; j < inlen; j++) {
-		if (hyphens[j] != '0') hyphenatedbuf[i++] = (widechar)'-';
+		if (hyphens[j] == '2')
+			hyphenatedbuf[i++] = (widechar)'|';
+		else if (hyphens[j] != '0')
+			hyphenatedbuf[i++] = (widechar)'-';
 		hyphenatedbuf[i++] = inbuf[j];
 	}
 

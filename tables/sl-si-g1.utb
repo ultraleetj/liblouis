@@ -95,7 +95,7 @@ sign \x00BA 145-1245 MASCULINE ORDINAL INDICATOR 006F
 punctuation \x00Ad 36			# 173	  soft hyphen
 sign \x00B0 5-234	# 176 ° degree sign
 sign \x00B4 4
-always \x00B4 4 # acute accent sign
+noback always \x00B4 4 # acute accent sign
 sign \x00B5 2-134 # micro sign, (mu)
 sign \x00B6 4-1234-345		#	182	  ¶ pilcrow sign
 math \x00D7 4-16				# 215		× multiplication sign
@@ -137,7 +137,7 @@ numericnocontchars abcdefghij
 numericmodechars .,:
 
 # Roman numbers are preceded with 456, also if single letter
-class roman IVXLCDM
+attribute roman IVXLCDM
 noback pass2 $ps[@46]%roman$ps @456
 noback pass2 $ps[@46]%roman~ @456
 noback pass2 `[@46]%roman$ps @456
@@ -320,7 +320,7 @@ uplow     \x03a7\x03c7 14     # 935 greek letter chi Χχ
 uplow     \x03a8\x03c8 13456  # 936 greek letter psi Ψψ
 uplow     \x03a9\x03c9 2456   # 937 greek letter omega Ωω
 
-class greek αβγδεζηθικλμνξοπρσςτυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ
+attribute greek αβγδεζηθικλμνξοπρσςτυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ
 noback context %greek. @56*
 noback pass2 @46@56 @56@46
 noback pass2 @456@56 @56@456
@@ -348,7 +348,7 @@ midnum : 25
 postpunc : 25
 postpunc ! 235
 midnum / 23456
-always / 23456
+noback always / 23456
 always < 6-236
 always > 6-356
 punctuation ? 26
@@ -360,14 +360,14 @@ always ~ 5-1356
 always & 5-24
 midnum * 35
 midnum + 1256
-always * 35
+noback always * 35
 midword \x2019 3	# stupid smart apostrophe
 always [ 6-235
 always ] 6-256
 always { 6-126
 always } 6-345
 prepunc ` 236
-always @ 246
+noback always @ 246
 always \\ 12356
 always | 5-1236
 repeated \s 0

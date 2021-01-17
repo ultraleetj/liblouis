@@ -1,6 +1,7 @@
 # liblouis: Norwegian literary braille, 6-dot, contracted level 2
 #
 #-name: Norsk litterær punktskrift, 6-punkt, kortskrift nivå 2
+#-index-name: Norwegian, contracted, grade 2
 #-display-name: Norwegian grade 2 contracted braille
 #
 #+locale:no
@@ -33,6 +34,9 @@
 # Official norwegian braille specifications are collected here:
 # http://liblouis.org/braille-specs/norwegian
 # This specific table is based on the document "Kortskrift i norsk punktskrift - KS04".
+#
+# Input is expected to be normalized to NFC (fully composed)
+#-unicode-form:nfc
 #
 #  This file is part of liblouis.
 #

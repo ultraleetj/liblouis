@@ -39,7 +39,9 @@ extern "C" {
 #include <stdio.h>
 #include "liblouis.h"
 
-#ifdef _WIN32
+/* Unlike Windows, Mingw can handle forward slashes as directory
+   separator, see http://mingw.org/wiki/Posix_path_conversion */
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)
 #define PATH_SEP ';'
 #define DIR_SEP '\\'
 #else
@@ -51,47 +53,22 @@ extern "C" {
 #define strcasecmp _stricmp
 #endif
 
-#define NUMSWAPS 50
 #define NUMVAR 50
-#define LETSIGNSIZE 128
+#define EMPHMODECHARSSIZE 256
+#define NOEMPHCHARSSIZE 256
+#define LETSIGNSIZE 256
+// noletsignbefore and noletsignafter is hardly ever used and usually
+// only with very few chars, so it only needs a small array
+#define LETSIGNBEFORESIZE 64
+#define LETSIGNAFTERSIZE 64
 #define SEQPATTERNSIZE 128
 #define CHARSIZE sizeof(widechar)
 #define DEFAULTRULESIZE 50
-#define ENDSEGMENT 0xffff
-
-/**
- * Definitions of braille dots
- */
-#define B1 0X01
-#define B2 0X02
-#define B3 0X04
-#define B4 0X08
-#define B5 0X10
-#define B6 0X20
-#define B7 0X40
-#define B8 0X80
-#define B9 0X100
-#define B10 0X200
-#define B11 0X400
-#define B12 0X800
-#define B13 0X1000
-#define B14 0X2000
-#define B15 0X4000
-#define B16 0X8000
 
 typedef struct intCharTupple {
-	int key;
+	unsigned long long key;
 	char value;
 } intCharTupple;
-
-/**
- * Mapping between braille dot and textual representation as used in dots operands
- */
-static const intCharTupple dotMapping[] = {
-	{ B1, '1' }, { B2, '2' }, { B3, '3' }, { B4, '4' }, { B5, '5' }, { B6, '6' },
-	{ B7, '7' }, { B8, '8' }, { B9, '9' }, { B10, 'A' }, { B11, 'B' }, { B12, 'C' },
-	{ B13, 'D' }, { B14, 'E' }, { B15, 'F' }, { 0, 0 },
-};
 
 /* HASHNUM must be prime */
 #define HASHNUM 1123
@@ -102,9 +79,17 @@ static const intCharTupple dotMapping[] = {
 #define MAX_EMPH_CLASSES 10  // {emph_1...emph_10} in typeforms enum (liblouis.h)
 
 typedef unsigned int TranslationTableOffset;
-#define OFFSETSIZE sizeof(TranslationTableOffset)
+
+/* Basic type for translation table data, which carries all alignment
+ * constraints that fields contained in translation table may have.
+ * Notably TranslationTableCharacterAttributes is unsigned long long, so we need
+ * at least this big basic type. */
+typedef unsigned long long TranslationTableData;
+#define OFFSETSIZE sizeof(TranslationTableData)
 
 typedef enum {
+	/* The first 8 are the predefined character classes. They need to be listed first and
+	   in this order because of how allocateCharacterClasses works. */
 	CTC_Space = 0x1,
 	CTC_Letter = 0x2,
 	CTC_Digit = 0x4,
@@ -114,31 +99,35 @@ typedef enum {
 	CTC_Math = 0x40,
 	CTC_Sign = 0x80,
 	CTC_LitDigit = 0x100,
-	CTC_Class1 = 0x200,
-	CTC_Class2 = 0x400,
-	CTC_Class3 = 0x800,
-	CTC_Class4 = 0x1000,
+	CTC_CapsMode = 0x200,
+	// bit 0x400 used to be taken by CTC_EmphMode
+	CTC_NumericMode = 0x800,
+	CTC_NumericNoContract = 0x1000,
 	CTC_SeqDelimiter = 0x2000,
 	CTC_SeqBefore = 0x4000,
 	CTC_SeqAfter = 0x8000,
-	CTC_UserDefined0 = 0x10000,  // class 5
-	CTC_UserDefined1 = 0x20000,
-	CTC_UserDefined2 = 0x40000,
-	CTC_UserDefined3 = 0x80000,
-	CTC_UserDefined4 = 0x100000,
-	CTC_UserDefined5 = 0x200000,
-	CTC_UserDefined6 = 0x400000,
-	CTC_UserDefined7 = 0x800000,  // class 12
-	CTC_CapsMode = 0x1000000,
-	CTC_NumericMode = 0x2000000,
-	CTC_NumericNoContract = 0x4000000,
-	CTC_EndOfInput = 0x8000000,  // only used by pattern matcher
-	CTC_EmpMatch = 0x10000000,   // only used in TranslationTableRule->before and
+	/* The following 8 are reserved for %0 to %7 (in no particular order) */
+	/* Be careful with changing these values (and also CTC_EndOfInput) because in
+	   pattern_compile_expression they are stored in a unsigned int after cutting of the
+	   16 least significant bits. */
+	CTC_UserDefined1 = 0x10000,
+	CTC_UserDefined2 = 0x20000,
+	CTC_UserDefined3 = 0x40000,
+	CTC_UserDefined4 = 0x80000,
+	CTC_UserDefined5 = 0x100000,
+	CTC_UserDefined6 = 0x200000,
+	CTC_UserDefined7 = 0x400000,
+	CTC_UserDefined8 = 0x800000,
+	CTC_EndOfInput = 0x1000000,  // only used by pattern matcher
+	CTC_EmpMatch = 0x2000000,	// only used in TranslationTableRule->before and
 								 // TranslationTableRule->after
-	CTC_MidEndNumericMode = 0x20000000,
-	// two more bits available in a unsigned int of width 32
-	// currently used for class 13 and 14
-	CTC_Class13 = 0x40000000,
+	CTC_MidEndNumericMode = 0x4000000,
+	/* At least 37 more bits available in a unsigned long long (at least 64 bits). Used
+	   for custom attributes 9 to 45. These need to be the last values of the enum. */
+	CTC_UserDefined9 = 0x8000000,
+	CTC_UserDefined10 = 0x10000000,
+	CTC_UserDefined11 = 0x20000000,
+	CTC_UserDefined12 = 0x40000000,
 } TranslationTableCharacterAttribute;
 
 typedef enum {
@@ -208,13 +197,13 @@ typedef enum {
 	pass_all = 255
 } pass_Codes;
 
-typedef unsigned int TranslationTableCharacterAttributes;
+typedef unsigned long long TranslationTableCharacterAttributes;
 
 typedef struct {
 	TranslationTableOffset next;
 	widechar lookFor;
 	widechar found;
-} CharOrDots;
+} CharDotsMapping;
 
 typedef struct {
 	TranslationTableOffset next;
@@ -267,7 +256,8 @@ typedef enum { /* Op codes */
 	/* End of ordered opcodes */
 
 	CTO_CapsModeChars,
-	// CTO_EmphModeChars,
+	CTO_EmphModeChars,
+	CTO_NoEmphChars,
 	CTO_BegComp,
 	CTO_CompBegEmph1,
 	CTO_CompEndEmph1,
@@ -313,6 +303,7 @@ typedef enum { /* Op codes */
 	CTO_Pass4,
 	CTO_Repeated,
 	CTO_RepWord,
+	CTO_RepEndWord,
 	CTO_CapsNoCont,
 	CTO_Always,
 	CTO_ExactDots,
@@ -469,7 +460,8 @@ typedef struct {
 	TranslationTableCharacterAttributes after;  /** character types which must follow */
 	TranslationTableCharacterAttributes before; /** character types which must precede */
 	TranslationTableOffset patterns;			/** before and after patterns */
-	TranslationTableOpcode opcode;		 /** rule for testing validity of replacement */
+	TranslationTableOpcode opcode; /** rule for testing validity of replacement */
+	char nocross;
 	short charslen;						 /** length of string to be replaced */
 	short dotslen;						 /** length of replacement string */
 	widechar charsdots[DEFAULTRULESIZE]; /** find and replacement strings */
@@ -494,18 +486,54 @@ typedef struct /* one state */
 	widechar numTrans;
 } HyphenationState;
 
+typedef struct CharacterClass {
+	struct CharacterClass *next;
+	TranslationTableCharacterAttributes attribute;
+	widechar length;
+	widechar name[1];
+} CharacterClass;
+
+typedef struct RuleName {
+	struct RuleName *next;
+	TranslationTableOffset ruleOffset;
+	widechar length;
+	widechar name[1];
+} RuleName;
+
+typedef struct {
+	TranslationTableOffset tableSize;
+	TranslationTableOffset bytesUsed;
+	TranslationTableOffset charToDots[HASHNUM];
+	TranslationTableOffset dotsToChar[HASHNUM];
+	TranslationTableData ruleArea[1]; /** Space for storing all rules and values */
+} DisplayTableHeader;
+
 /**
  * Translation table header
  */
 typedef struct { /* translation table */
+
+	/* state needed during compilation */
+	TranslationTableOffset tableSize;
+	TranslationTableOffset bytesUsed;
+	CharacterClass *characterClasses;
+	TranslationTableCharacterAttributes nextCharacterClassAttribute;
+	TranslationTableCharacterAttributes nextNumberedCharacterClassAttribute;
+	RuleName *ruleNames;
+	TranslationTableCharacterAttributes
+			numberedAttributes[8]; /* attributes 0-7 used in match rules (could also be
+								   stored in `characterClasses', but this is slightly
+								   faster) */
+	int usesAttributeOrClass;	  /* 1 = attribute, 2 = class */
+
+	/* needed for translation or other api functions */
 	int capsNoCont;
 	int numPasses;
 	int corrections;
 	int syllables;
 	int usesSequences;
 	int usesNumericMode;
-	TranslationTableOffset tableSize;
-	TranslationTableOffset bytesUsed;
+	int hasCapsModeChars;
 	TranslationTableOffset undefined;
 	TranslationTableOffset letterSign;
 	TranslationTableOffset numberSign;
@@ -515,39 +543,31 @@ typedef struct { /* translation table */
 	int seqPatternsCount;
 	widechar seqAfterExpression[SEQPATTERNSIZE];
 	int seqAfterExpressionLength;
-
-	/* emphRules, including caps. */
-	TranslationTableOffset emphRules[MAX_EMPH_CLASSES + 1][9];
-
+	TranslationTableOffset emphRules[MAX_EMPH_CLASSES + 1] /* includes caps */
+									[9]; /* 9 is the size of the EmphCodeOffset enum */
 	TranslationTableOffset begComp;
-	TranslationTableOffset compBegEmph1;
-	TranslationTableOffset compEndEmph1;
-	TranslationTableOffset compBegEmph2;
-	TranslationTableOffset compEndEmph2;
-	TranslationTableOffset compBegEmph3;
-	TranslationTableOffset compEndEmph3;
-	TranslationTableOffset compCapSign;
-	TranslationTableOffset compBegCaps;
-	TranslationTableOffset compEndCaps;
 	TranslationTableOffset endComp;
 	TranslationTableOffset hyphenStatesArray;
-	widechar noLetsignBefore[LETSIGNSIZE];
+	widechar noLetsignBefore[LETSIGNBEFORESIZE];
 	int noLetsignBeforeCount;
 	widechar noLetsign[LETSIGNSIZE];
 	int noLetsignCount;
-	widechar noLetsignAfter[LETSIGNSIZE];
+	widechar noLetsignAfter[LETSIGNAFTERSIZE];
 	int noLetsignAfterCount;
+	widechar emphModeChars[MAX_EMPH_CLASSES] /* does not include caps: capsmodechars are
+											  * currently stored as character attributes
+											  */
+						  [EMPHMODECHARSSIZE + 1];
+	widechar noEmphChars[MAX_EMPH_CLASSES] /* does not include caps */
+						[NOEMPHCHARSSIZE + 1];
 	TranslationTableOffset characters[HASHNUM]; /** Character definitions */
 	TranslationTableOffset dots[HASHNUM];		/** Dot definitions */
-	TranslationTableOffset charToDots[HASHNUM];
-	TranslationTableOffset dotsToChar[HASHNUM];
 	TranslationTableOffset compdotsPattern[256];
-	TranslationTableOffset swapDefinitions[NUMSWAPS];
 	TranslationTableOffset forPassRules[MAXPASS + 1];
 	TranslationTableOffset backPassRules[MAXPASS + 1];
 	TranslationTableOffset forRules[HASHNUM];  /** chains of forward rules */
 	TranslationTableOffset backRules[HASHNUM]; /** Chains of backward rules */
-	TranslationTableOffset ruleArea[1]; /** Space for storing all rules and values */
+	TranslationTableData ruleArea[1]; /** Space for storing all rules and values */
 } TranslationTableHeader;
 
 typedef enum {
@@ -563,6 +583,7 @@ typedef enum {
 
 #define MAXPASSBUF 3
 
+/* index in table->emphRules */
 typedef enum {
 	capsRule = 0,
 	emph1Rule = 1,
@@ -594,14 +615,17 @@ typedef enum {
  * to do simple bit operations. */
 
 typedef struct {
-	unsigned int begin : 16;
+	unsigned int begin : 16; /* fields contain sums of EmphasisClass.value */
 	unsigned int end : 16;
 	unsigned int word : 16;
 	unsigned int symbol : 16;
 } EmphasisInfo;
 
-/* An emphasis class is a bit field that contains a single "1" */
-typedef unsigned int EmphasisClass;
+typedef struct {
+	unsigned int value;  /* bit field that contains a single "1" */
+	formtype typeform;   /* corresponding value in "typeforms" enum */
+	EmphRuleNumber rule; /* corresponding emphasis rules */
+} EmphasisClass;
 
 typedef enum { noEncoding, bigEndian, littleEndian, ascii8 } EncodingType;
 
@@ -639,22 +663,36 @@ _lou_resolveTable(const char *tableList, const char *base);
 char **EXPORT_CALL
 _lou_defaultTableResolver(const char *tableList, const char *base);
 
-char *EXPORT_CALL
-_lou_getLastTableList(void);
-
 /**
  * Return single-cell dot pattern corresponding to a character.
  * TODO: move to commonTranslationFunctions.c
  */
 widechar EXPORT_CALL
-_lou_getDotsForChar(widechar c);
+_lou_getDotsForChar(widechar c, const DisplayTableHeader *table);
 
 /**
  * Return character corresponding to a single-cell dot pattern.
  * TODO: move to commonTranslationFunctions.c
  */
 widechar EXPORT_CALL
-_lou_getCharFromDots(widechar d);
+_lou_getCharForDots(widechar d, const DisplayTableHeader *table);
+
+void EXPORT_CALL
+_lou_getTable(const char *tableList, const char *displayTableList,
+		const TranslationTableHeader **translationTable,
+		const DisplayTableHeader **displayTable);
+
+const TranslationTableHeader *EXPORT_CALL
+_lou_getTranslationTable(const char *tableList);
+
+const DisplayTableHeader *EXPORT_CALL
+_lou_getDisplayTable(const char *tableList);
+
+int EXPORT_CALL
+_lou_compileTranslationRule(const char *tableList, const char *inString);
+
+int EXPORT_CALL
+_lou_compileDisplayRule(const char *tableList, const char *inString);
 
 /**
  * Allocate memory for internal buffers
@@ -668,34 +706,43 @@ _lou_allocMem(AllocBuf buffer, int index, int srcmax, int destmax);
 
 /**
  * Hash function for character strings
+ *
+ * @param lowercase Whether to convert the string to lowercase because
+ *                  making the hash of it.
  */
-int EXPORT_CALL
-_lou_stringHash(const widechar *c);
+unsigned long int EXPORT_CALL
+_lou_stringHash(const widechar *c, int lowercase, const TranslationTableHeader *table);
 
 /**
  * Hash function for single characters
  */
-int EXPORT_CALL
+unsigned long int EXPORT_CALL
 _lou_charHash(widechar c);
 
 /**
  * Return a string in the same format as the characters operand in opcodes
- * TODO: move to utils.c
  */
-char *EXPORT_CALL
-_lou_showString(widechar const *chars, int length);
+const char *EXPORT_CALL
+_lou_showString(widechar const *chars, int length, int forceHex);
+
+/**
+ * Print out dot numbers
+ *
+ * @return a string containing the dot numbers. The longest possible
+ * output is "\123456789ABCDEF0/"
+ */
+const char *EXPORT_CALL
+_lou_unknownDots(widechar dots);
 
 /**
  * Return a character string in the format of the dots operand
- * TODO: move to utils.c
  */
-char *EXPORT_CALL
+const char *EXPORT_CALL
 _lou_showDots(widechar const *dots, int length);
 
 /**
  * Return a character string where the attributes are indicated
  * by the attribute letters used in multipass opcodes
- * TODO: move to utils.c
  */
 char *EXPORT_CALL
 _lou_showAttributes(TranslationTableCharacterAttributes a);
@@ -742,16 +789,16 @@ int EXPORT_CALL
 _lou_extParseDots(const char *inString, widechar *outString);
 
 int EXPORT_CALL
-_lou_translateWithTracing(const char *tableList, const widechar *inbuf, int *inlen,
-		widechar *outbuf, int *outlen, formtype *typeform, char *spacing, int *outputPos,
-		int *inputPos, int *cursorPos, int mode, const TranslationTableRule **rules,
-		int *rulesLen);
+_lou_translate(const char *tableList, const char *displayTableList, const widechar *inbuf,
+		int *inlen, widechar *outbuf, int *outlen, formtype *typeform, char *spacing,
+		int *outputPos, int *inputPos, int *cursorPos, int mode,
+		const TranslationTableRule **rules, int *rulesLen);
 
 int EXPORT_CALL
-_lou_backTranslateWithTracing(const char *tableList, const widechar *inbuf, int *inlen,
-		widechar *outbuf, int *outlen, formtype *typeform, char *spacing, int *outputPos,
-		int *inputPos, int *cursorPos, int mode, const TranslationTableRule **rules,
-		int *rulesLen);
+_lou_backTranslate(const char *tableList, const char *displayTableList,
+		const widechar *inbuf, int *inlen, widechar *outbuf, int *outlen,
+		formtype *typeform, char *spacing, int *outputPos, int *inputPos, int *cursorPos,
+		int mode, const TranslationTableRule **rules, int *rulesLen);
 
 void EXPORT_CALL
 _lou_resetPassVariables(void);
@@ -764,14 +811,15 @@ _lou_handlePassVariableAction(const widechar *instructions, int *IC);
 
 int EXPORT_CALL
 _lou_pattern_compile(const widechar *input, const int input_max, widechar *expr_data,
-		const int expr_max, const TranslationTableHeader *t);
+		const int expr_max, TranslationTableHeader *table, const FileInfo *nested);
 
 void EXPORT_CALL
 _lou_pattern_reverse(widechar *expr_data);
 
 int EXPORT_CALL
 _lou_pattern_check(const widechar *input, const int input_start, const int input_minmax,
-		const int input_dir, const widechar *expr_data, const TranslationTableHeader *t);
+		const int input_dir, const widechar *expr_data,
+		const TranslationTableHeader *table);
 
 /**
  * Read a line of widechar's from an input file
@@ -807,6 +855,17 @@ extern int translation_direction;
  */
 int EXPORT_CALL
 _lou_isValidMode(int mode);
+
+/**
+ * Return the default braille representation for a character.
+ */
+widechar EXPORT_CALL
+_lou_charToFallbackDots(widechar c);
+
+static inline int
+isASCII(widechar c) {
+	return (c >= 0X20) && (c < 0X7F);
+}
 
 #ifdef __cplusplus
 }

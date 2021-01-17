@@ -1,6 +1,7 @@
 # liblouis: Norwegian literary braille, 6-dot, uncontracted
 #
 #-name: Norsk litterær punktskrift, 6-punkt, fullskrift
+#-index-name: Norwegian, uncontracted, 6-dot
 #-display-name: Norwegian 6-dot uncontracted braille
 #
 #+locale:no
@@ -43,6 +44,9 @@
 # Official norwegian braille specifications are collected here:
 # http://liblouis.org/braille-specs/norwegian
 # This specific table is based on the document "Håndbok i litterær punktskrift".
+#
+# Input is expected to be normalized to NFC (fully composed)
+#-unicode-form:nfc
 #
 #  This file is part of liblouis.
 #
@@ -95,7 +99,7 @@ midnum : 25
 midnum = 2356
 
 endnum # 56-3456
-always # 3456
+noback always # 3456
 endnum a 56-1
 endnum b 56-12
 endnum c 56-14
@@ -179,7 +183,7 @@ digit ₉ 24a
 
 # ₊ ₋ ₌ ₍ ₎ ₐ ₑ ₒ ₓ ₔ ⱼ ᵢ ᵣ ᵤ ᵥ ᵦ ᵧ ᵨ ᵩ ᵪ
 
-class sub ₀₁₂₃₄₅₆₇₈₉
+attribute sub ₀₁₂₃₄₅₆₇₈₉
 
 noback pass2 %sub%sub. @16-236*
 noback pass2 %sub @16*
@@ -221,7 +225,7 @@ digit ⁹ 24b
 
 # ⁱ ⁺ ⁻ ⁼ ⁽ ⁾ ⁿ ª º ⱽ ᴮ ᴯ ᴰ ᴱ ᴲ ᴳ ᴴ ᴵ ᴶ ᴷ ᴸ ᴹ ᴺ ᴻ ᴼ ᴽ ᴾ ᴿ ᵀ ᵁ ᵂ ᵃ ᵄ ᵅ ᵆ ᵇ ᵈ ᵉ ᵊ ᵋ ᵌ ᵍ ᵏ ᵐ ᵑ ᵒ ᵓ ᵖ ᵗ ᵘ ᵚ ᵛ ᵝ ᵞ ᵟ ᵠ ᵡ
 
-class super ⁰¹²³⁴⁵⁶⁷⁸⁹
+attribute super ⁰¹²³⁴⁵⁶⁷⁸⁹
 
 noback pass2 %super%super. @46-236*
 noback pass2 %super @46*

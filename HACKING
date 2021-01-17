@@ -22,6 +22,7 @@ when hacking liblouis.
   - [[#how-to-run-tests][How to run tests]]
   - [[#how-to-debug][How to debug]]
   - [[#how-to-find-memory-leaks][How to find memory leaks]]
+  - [[#static-analysis][Static analysis]]
   - [[#how-to-analyze-performance][How to analyze performance]]
   - [[#how-to-build-for-windows][How to build for Windows]]
 - [[#release-procedure][Release Procedure]]
@@ -286,7 +287,7 @@ $ make
 $ ./tools/lou_translate tables/en-ueb-g2.ctb
 #+END_SRC
 
-Run a few translations, end the program and marvel at the output
+Run a few translations, end the program and marvel at the output of
 AddressSanitizer. At the time of this writing it complained pretty
 hard:
 
@@ -318,6 +319,23 @@ $ libtool --mode=execute gdb ./tools/lou_allround
 If there are problems with memory access the program will run into a
 segmentation fault which you can consequently analyze in the debugger.
 
+** Static analysis
+[[http://clang-analyzer.llvm.org/scan-build.html][scan-build]] is a command line utility to run a static analyzer over the
+codebase. It helps to find problems such as memory leaks, dereference
+of null pointer, etc.
+
+#+BEGIN_SRC shell
+$ make maintainer-clean
+$ ./autogen.sh
+$ scan-build ./configure
+$ scan-build make
+...
+scan-build: 101 bugs found.
+scan-build: Run 'scan-view /tmp/scan-build-2019-08-15-141827-5185-1' to examine bug reports.
+#+END_SRC
+
+then look at the generated reports and fix (or report) the issues.
+
 ** How to analyze performance
 Gprof helps you analyze the performance of programs. You have to
 compile liblouis as follows:
@@ -343,36 +361,20 @@ $ libtool --mode=execute gprof ./tools/lou_translate gmon.out
 See the ~README.windows~ file and the windows subdirectory.
 
 *** How to cross-compile for Windows
-To compile for win32, use the MinGW win32 cross-compiler as shown
-below. Use the prefix option to install the binaries to a temporary
-place where you can create a zip file. The ~LDFLAGS='-all-static'~
-ensures that libgcc is linked in statically. Otherwise the users need
-to have ~libgcc_s_sjlj-1.dll~.
+To compile for either win32 or win64 two Dockerfiles are provided
+which set up the right environment to cross-compile liblouis. There is
+a Makefile target that will build the Docker images, build liblouis
+and extract the zip files with the windows build artifacts.
 
-Some users want the dlls unversioned. To achieve that add
-~-avoid-version~ to ~LDFLAGS~.
+To build for both win32 and win64 type the following command:
 
 #+BEGIN_SRC shell
-$ ./configure --build=i686-pc-linux-gnu --host=i686-w64-mingw32 --prefix=/tmp/liblouis-mingw32
-$ make LDFLAGS='-avoid-version -Xcompiler -static-libgcc'
-$ make install
-$ zip -r liblouis-mingw32msvc.zip /tmp/liblouis-mingw32
+$ make distwin
 #+END_SRC
 
-To compile for win64, use the MinGW-w64 cross-compiler:
-
-#+BEGIN_SRC shell
-$ ./configure --build=i686-pc-linux-gnu --host=x86_64-w64-mingw32 --prefix=/tmp/liblouis-w64-mingw32
-$ make LDFLAGS='-avoid-version -Xcompiler -static-libgcc'
-$ make install
-$ zip -r liblouis-w64-mingw32.zip /tmp/liblouis-w64-mingw32
-#+END_SRC
-
-Two makefile rules have been provided to do this automatically for you. Docker will be used if the
-right cross-compiler is not installed. To compile for win32 using the MinGW cross-compiler, run ~make
-distwin32~. This will produce a ZIP file called ~liblouis-<version>-win32.zip~. To compile for win64
-using the MinGW-w64 cross-compiler, run ~make distwin64~. This will produce a ZIP file called
-~liblouis-<version>-win64.zip~.
+This will place ~liblouis-$(VERSION)-win32.zip~ and
+~liblouis-$(VERSION)-win64.zip~ in the current directory. The build is
+compiled with ~--enable-ucs4~ and contains ~lou_checkyaml.exe~.
 
 *** TODO How to build for Windows using Cygwin
 (possibly use a Vagrantfile as demonstration + explain that Cygwin
@@ -392,7 +394,7 @@ NVDA.
 
 ** Set the version number
 Update the version number in ~NEWS~ (with version, date, and release
-type), ~ChangeLog~, ~configure.ac~ and ~windows/include/config.h~.
+type), ~configure.ac~ and ~windows/include/config.h~.
 
 Don't forget to update the libtool versioning info in ~configure.ac~,
 i.e. ~LIBLOUIS_REVISION~ and possibly ~LIBLOUIS_CURRENT~ and

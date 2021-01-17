@@ -69,7 +69,7 @@ noback correct ["\x2020"] "gest."
 
 # --- Satzzeichen nach zahlenähnlichen Zeichen
 
-class puncAfterOrdinal ;:?!()[]\x00AB\x00BB
+attribute puncAfterOrdinal ;:?!()[]\x00AB\x00BB
 # Prozent
 noback correct ["%"]%puncAfterOrdinal "%\x250B"
 noback correct ["%,"] "%\x256C,"
@@ -178,19 +178,19 @@ always  (?         2356-6-26
 endnum  !          6-235
 midword !          6-235
 always  \s!        0-6-235
-always  !          235
+noback always  !          235
 
 midword :          6-25
 
 midword (          6-2356
 midnum  (          6-2356-3456
 endnum  (          6-2356
-always  (          2356
+noback always  (          2356
 
 midword )          6-2356
 midnum  )          6-2356-3456
 endnum  )          6-2356
-always  )          2356
+noback always  )          2356
 
 midword [          6-6-2356
 midnum  [          6-6-2356-3456
