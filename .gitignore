@@ -70,6 +70,7 @@ TAGS
 /doc/version.texi
 /doc/stamp-vti
 /doc/liblouis.html
+/doc/liblouis-single.html
 /doc/liblouis.info
 /doc/liblouis.txt
 /doc/liblouis.pdf
@@ -100,14 +101,18 @@ TAGS
 /gnulib/dirent.h
 /gnulib/errno.h
 /gnulib/getopt.h
+/gnulib/inttypes.h
 /gnulib/limits.h
+/gnulib/stdckdint.h
 /gnulib/stddef.h
 /gnulib/stdint.h
 /gnulib/stdio.h
 /gnulib/stdlib.h
 /gnulib/string.h
+/gnulib/strings.h
 /gnulib/sys/
 /gnulib/unistd.h
+/gnulib/wchar.h
 
 # /liblouis/
 /liblouis/.libs
@@ -147,7 +152,7 @@ TAGS
 /python/Makefile
 /python/Makefile.in
 /python/build
-/python/setup.py
+/python/pyproject.toml
 
 # /python/louis/
 /python/louis/Makefile
@@ -155,9 +160,20 @@ TAGS
 /python/louis/__init__.py
 /python/louis/*.pyc
 
+# /python/examples/
+/python/examples/Makefile
+/python/examples/Makefile.in
+
+# /python/tests/
+/python/tests/Makefile
+/python/tests/Makefile.in
+
+
 # /tables
 /tables/Makefile
 /tables/Makefile.in
+/tables/nl-NL-g0.utb
+/tables/nl-chardefs.uti
 
 # /tests/
 /tests/.libs
@@ -173,13 +189,13 @@ TAGS
 /tests/backtranslate_noUndefinedDots
 /tests/backtranslate_partialTrans
 /tests/backtranslate_with_letsign
+/tests/backtranslation_emphasis
 /tests/capitalization
 /tests/capitalized_with_sentance
 /tests/capitalized_word
 /tests/charToFallbackDots
 /tests/checkTable
 /tests/check_metadata
-/tests/check_ueb_test_data
 /tests/compbrlAtCursor
 /tests/emphclass
 /tests/en_gb_g1_italics
@@ -198,6 +214,7 @@ TAGS
 /tests/lastworditalafter
 /tests/letterDefTest
 /tests/logging
+/tests/malformedTables
 /tests/pass0_typebuf
 /tests/pass2
 /tests/pass2_inpos
@@ -215,6 +232,23 @@ TAGS
 /tests/braille-specs/Makefile.in
 /tests/braille-specs/*.log
 /tests/braille-specs/*.trs
+
+# /tests/fuzzing/
+/tests/fuzzing/Makefile
+/tests/fuzzing/Makefile.in
+/tests/fuzzing/.deps
+/tests/fuzzing/.dirstamp
+/tests/fuzzing/.libs
+/tests/fuzzing/*.profdata
+/tests/fuzzing/*.profraw
+/tests/fuzzing/CORPUS/*
+/tests/fuzzing/crash-*
+/tests/fuzzing/fuzz_backtranslate
+/tests/fuzzing/fuzz_translate
+/tests/fuzzing/fuzz_translate_generic
+/tests/fuzzing/fuzz-*.log
+/tests/fuzzing/leak-*
+/tests/fuzzing/oom-*
 
 # /tests/yaml/
 /tests/yaml/Makefile
@@ -242,10 +276,6 @@ TAGS
 /tests/tablesWithMetadata/Makefile
 /tests/tablesWithMetadata/Makefile.in
 
-# /tests/ueb_test_data/
-/tests/ueb_test_data/Makefile
-/tests/ueb_test_data/Makefile.in
-
 # /tools/
 /tools/.libs
 /tools/.deps
@@ -272,20 +302,27 @@ TAGS
 /tools/gnulib/*.la
 /tools/gnulib/Makefile
 /tools/gnulib/Makefile.in
+/tools/gnulib/alloca.h
 /tools/gnulib/errno.h
+/tools/gnulib/error.h
+/tools/gnulib/fcntl.h
 /tools/gnulib/getopt-cdefs.h
 /tools/gnulib/getopt.h
+/tools/gnulib/inttypes.h
 /tools/gnulib/limits.h
+/tools/gnulib/stdckdint.h
 /tools/gnulib/stddef.h
 /tools/gnulib/stdint.h
 /tools/gnulib/stdio.h
 /tools/gnulib/stdlib.h
 /tools/gnulib/string.h
 /tools/gnulib/sys/
+/tools/gnulib/time.h
 /tools/gnulib/unistd.h
 /tools/gnulib/unistr.h
 /tools/gnulib/unistr/.dirstamp
 /tools/gnulib/unitypes.h
+/tools/gnulib/wchar.h
 
 # /tools/gnulib/unistr/
 /tools/gnulib/unistr/.libs
@@ -298,12 +335,6 @@ TAGS
 /tools/lou_maketable.d/lou_maketable
 /tools/lou_maketable.d/Makefile
 /tools/lou_maketable.d/Makefile.in
-
-# stuff used with /tests/check_ueb_test_data
-input.txt
-pass.txt
-fail.txt
-output.txt
 
 # /windows/
 /windows/*.obj

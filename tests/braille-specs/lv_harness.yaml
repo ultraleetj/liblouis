@@ -1,4 +1,4 @@
-# Based on the Latvian braille specifications <http://liblouis.org/braille-specs/latvian>
+# Based on the Latvian braille specifications <http://liblouis.io/braille-specs/latvian>
 #
 # Copyright © 2017-2018 Rimas Kudelis
 # Copyright © 2018 Gatis Grintals
@@ -12,7 +12,7 @@
 
 display: unicode-without-blank.dis
 table:
-  locale: lv
+  language: lv
   grade: 1
   __assert-match: lv.tbl # Lv-Lv-g1.utb
 

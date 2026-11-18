@@ -2,9 +2,12 @@
 #-index-name: English, U.S., computer, 8-dot
 #-display-name: English 8-dot computer braille as used in the U.S.
 
-#+locale:en-US
+#+language:en
+#+region:en-US
 #+type:computer
 #+dots:8
+# Marked as "direction:both" by Bue Vester-Andersen
+# as it is a computer Braille table.
 #+direction:both
 #+system:ebae
 

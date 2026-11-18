@@ -23,22 +23,27 @@
  * @brief Find translation tables
  */
 
+#include "config.h"
+
 #include <stdlib.h>
 #include <string.h>
-#ifdef _MSC_VER
+#ifndef _MSC_VER
+#include <strings.h> /* for strcasecmp/strncasecmp; on MSVC these are shimmed in internal.h */
+#endif
+#if defined(_MSC_VER) || defined(_WIN32)
 #include <windows.h>
 #else
 #include <dirent.h>
 #endif
 #include <sys/stat.h>
 #include "internal.h"
-#include "config.h"
 
 /* =============================== LIST =================================== */
 
 typedef struct List {
 	void *head;
-	void (*free)(void *);
+	void (*free)(void *);  // free head
+	void *(*dup)(void *);  // dup head
 	struct List *tail;
 } List;
 
@@ -47,23 +52,25 @@ typedef struct List {
  * if `cmp' is not NULL and if `list' is also sorted. New elements replace
  * existing ones if they are equal according to `cmp'. If `cmp' is NULL,
  * elements are simply prepended to the list. The function `dup' is used to
- * duplicate elements before they are added to the list. The `free' function
- * is used to free elements when they are removed from the list. The returned
- * list must be freed by the caller.
+ * duplicate elements when the list is copied. The `free' function is used to
+ * free elements when they are removed from the list. The returned list must
+ * be freed by the caller, using list_free.
  */
 static List *
 list_conj(List *list, void *x, int (*cmp)(void *, void *), void *(*dup)(void *),
 		void (*free)(void *)) {
 	if (!list) {
 		list = malloc(sizeof(List));
-		list->head = dup ? dup(x) : x;
+		list->head = x;
 		list->free = free;
+		list->dup = dup;
 		list->tail = NULL;
 		return list;
 	} else if (!cmp) {
 		List *l = malloc(sizeof(List));
-		l->head = dup ? dup(x) : x;
+		l->head = x;
 		l->free = free;
+		l->dup = dup;
 		l->tail = list;
 		return l;
 	} else {
@@ -82,8 +89,9 @@ list_conj(List *list, void *x, int (*cmp)(void *, void *), void *(*dup)(void *),
 			}
 		}
 		List *l3 = malloc(sizeof(List));
-		l3->head = dup ? dup(x) : x;
+		l3->head = x;
 		l3->free = free;
+		l3->dup = dup;
 		l3->tail = l1;
 		if (!l2)
 			list = l3;
@@ -106,7 +114,53 @@ list_free(List *list) {
 }
 
 /**
+ * Adapters so that list_free/list_dup can be used as generic List/Feature
+ * callbacks (which are typed `void (*)(void *)' / `void *(*)(void *)') without
+ * calling through an incompatibly-typed function pointer, which is undefined
+ * behaviour.
+ */
+static void
+list_free_(void *v) {
+	list_free(v);
+}
+
+/**
+ * Duplicate an instance of type List.
+ */
+static List *
+list_dup(List *list) {
+	if (!list) return list;
+	List *d = malloc(sizeof(List));
+	d->head = list->dup ? list->dup(list->head) : list->head;
+	d->free = list->free;
+	d->dup = list->dup;
+	d->tail = list_dup(list->tail);
+	return d;
+}
+
+/**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static void *
+list_dup_(void *v) {
+	return list_dup(v);
+}
+
+/**
+ * Adapter so that strdup can be used as a generic List/Feature dup callback
+ * (typed `void *(*)(void *)') without calling through an incompatibly-typed
+ * function pointer, which is undefined behaviour.
+ */
+static void *
+strdup_(void *s) {
+	return strdup(s);
+}
+
+/**
  * Sort a list based on a comparison function.
+ *
+ * This function returns a new list, however the input list should not be used after the
+ * returned list is freed as the elements are not copied.
  */
 static List *
 list_sort(List *list, int (*cmp)(void *, void *)) {
@@ -135,13 +189,14 @@ list_size(List *list) {
  * Convert a list into a NULL terminated array.
  */
 static void **
-list_toArray(List *list, void *(*dup)(void *)) {
+list_toArray(List *list, int deepCopy) {
 	void **array;
 	List *l;
 	int i;
 	array = malloc((1 + list_size(list)) * sizeof(void *));
 	i = 0;
-	for (l = list; l; l = l->tail) array[i++] = dup ? dup(l->head) : l->head;
+	for (l = list; l; l = l->tail)
+		array[i++] = deepCopy && l->dup ? l->dup(l->head) : l->head;
 	array[i] = NULL;
 	return array;
 }
@@ -150,7 +205,9 @@ list_toArray(List *list, void *(*dup)(void *)) {
 
 typedef struct {
 	char *key;
-	char *val;
+	void *val;
+	void (*free)(void *);  // free val
+	void *(*dup)(void *);  // dup val
 } Feature;
 
 typedef struct {
@@ -159,40 +216,180 @@ typedef struct {
 } FeatureWithImportance;
 
 typedef struct {
+	Feature feature;
+	int lineNumber;	 // no line number (-1) means it is a default value
+} FeatureWithLineNumber;
+
+typedef struct {
 	char *name;
 	List *features;
 } TableMeta;
 
 /**
  * Create an instance of type Feature.
- * The `key' and `val' strings are duplicated. Leaving out the `val'
- * argument results in a value of "yes".
+ *
+ * The returned instance must be freed by the caller, using feat_free. The `key' string is
+ * freed in feat_free and copied in feat_dup. What happens with `val' is determined by the
+ * `dup' and `free' arguments.
  */
 static Feature
-feature_new(const char *key, const char *val) {
-	static const char *YES = "yes";
+feat_new(char *key, void *val, void *(*dup)(void *), void (*free)(void *)) {
 	Feature f;
-	f.key = strdup(key);
-	f.val = strdup(val ? val : YES);
+	f.key = key;
+	f.val = val;
+	f.dup = dup;
+	f.free = free;
 	return f;
 }
 
 /**
- * Free an instance of type Feature
+ * Free an instance of type Feature.
  */
 static void
-feature_free(Feature *f) {
+feat_free(Feature *f) {
 	if (f) {
 		free(f->key);
-		free(f->val);
+		if (f->free) f->free(f->val);
 		free(f);
 	}
+}
+
+/**
+ * Adapters, see list_free_/list_dup_ above.
+ */
+static void
+feat_free_(void *v) {
+	feat_free(v);
+}
+
+/**
+ * Duplicate an instance of type Feature.
+ */
+static Feature *
+feat_dup(Feature *f) {
+	if (!f) return NULL;
+	Feature *d = malloc(sizeof(Feature));
+	d->key = strdup(f->key);
+	d->val = f->dup ? f->dup(f->val) : f->val;
+	d->free = f->free;
+	d->dup = f->dup;
+	return d;
+}
+
+/**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static void *
+feat_dup_(void *v) {
+	return feat_dup(v);
+}
+
+/**
+ * Free an instance of type TableMeta.
+ *
+ * Both `name' string and `features' list are freed.
+ */
+static void
+meta_free(TableMeta *m) {
+	if (m) {
+		free(m->name);
+		list_free(m->features);
+		free(m);
+	}
+}
+
+/**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static void
+meta_free_(void *v) {
+	meta_free(v);
+}
+
+/* =========================== LANGUAGE TAGS ============================== */
+
+/**
+ * Return true if the tag we're parsing is a language tag (language, region or
+ * locale).
+ */
+static int
+isLanguageTag(const char *key, int len) {
+	return strncasecmp("language", key, len) == 0 ||
+			strncasecmp("region", key, len) == 0 || strncasecmp("locale", key, len) == 0;
+}
+
+static int
+isAlpha(char c) {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+static int
+isAlphaNum(char c) {
+	return (c >= '0' && c <= '9') || isAlpha(c);
+}
+
+/**
+ * Parse language tag into a list of subtags.
+ *
+ * The returned list must be freed by the caller, using list_free.
+ */
+static List *
+parseLanguageTag(const char *val) {
+	List *list = NULL;
+	List **tail = &list;
+	static char subtag[9];
+	if (!*val) return NULL;
+	if (val[0] == '*') {
+		if (val[1] && val[1] != '-') return NULL;
+		*subtag = '\0';
+		strncat(subtag, val, 1);
+		*tail = list_conj(NULL, strdup(subtag), NULL, strdup_, free);
+		tail = &(*tail)->tail;
+		if (!val[1]) return list;
+		val = &val[2];
+	}
+	while (1) {
+		int len = 0;
+		for (; len <= 8; len++)
+			if (!val[len] || !isAlphaNum(val[len]) || (!list && !isAlpha(val[len])))
+				break;
+		if (len < 1 || len > 8 || (val[len] && val[len] != '-')) {
+			list_free(list);
+			return NULL;
+		}
+		*subtag = '\0';
+		strncat(subtag, val, len);
+		*tail = list_conj(NULL, strdup(subtag), NULL, strdup_, free);
+		tail = &(*tail)->tail;
+		if (!val[len]) return list;
+		val = &val[len + 1];
+	}
+	return NULL;
+}
+
+/**
+ * Serialize language tag.
+ *
+ * The returned string must be freed by the caller.
+ */
+static char *
+serializeLanguageTag(const List *tag) {
+	int len = 0;
+	const List *l;
+	for (l = tag; l; l = l->tail) len = len + 1 + strlen(l->head);
+	char *s = malloc(len * sizeof(char));
+	s[0] = '\0';
+	for (l = tag; l; l = l->tail) {
+		if (l != tag) s = strcat(s, "-");
+		s = strcat(s, l->head);
+	}
+	return s;
 }
 
 /* ======================================================================== */
 
 /**
- * Sort features based on their keys.
+ * Sort features by their key (alphabetical order).
  */
 static int
 cmpKeys(Feature *f1, Feature *f2) {
@@ -200,14 +397,90 @@ cmpKeys(Feature *f1, Feature *f2) {
 }
 
 /**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static int
+cmpKeys_(void *v1, void *v2) {
+	return cmpKeys(v1, v2);
+}
+
+/**
+ * Sort features by their key and value (alphabetical order).
+ */
+static int
+cmpFeatures(Feature *f1, Feature *f2) {
+	int r = strcasecmp(f1->key, f2->key);
+	if (r != 0) return r;
+	if (isLanguageTag(f1->key, MAXSTRING)) {
+		List *l1 = f1->val;
+		List *l2 = f2->val;
+		while (l1 && l2) {
+			r = strcasecmp(l1->head, l2->head);
+			if (r != 0) return r;
+			l1 = l1->tail;
+			l2 = l2->tail;
+		}
+		return l1 ? 1 : l2 ? -1 : 0;
+	} else
+		return strcasecmp(f1->val, f2->val);
+}
+
+/**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static int
+cmpFeatures_(void *v1, void *v2) {
+	return cmpFeatures(v1, v2);
+}
+
+/**
+ * Return a positive number if the given language tag matches the language range,
+ * 0 otherwise.
+ *
+ * In case of a perfect match, return 10. Otherwise, for each extra subtag that
+ * has no exact match in the range, subtract two.
+ *
+ * See also <https://datatracker.ietf.org/doc/html/rfc4647#section-3.3.2>
+ */
+static int
+matchLanguageTags(const List *tag, const List *range) {
+	static const int POS_MATCH = 10;
+	static const int EXTRA = -2;
+	int q = POS_MATCH;
+	if (*((char *)range->head) == '*')
+		q += EXTRA;
+	else if (strcasecmp(tag->head, range->head) != 0)
+		return 0;
+	range = range->tail;
+	tag = tag->tail;
+	while (range) {
+		if (!tag) return 0;
+		if (strcasecmp(tag->head, range->head) == 0) {
+			range = range->tail;
+			tag = tag->tail;
+			continue;
+		} else if (strlen(tag->head) == 1)
+			return 0;
+		else
+			q += EXTRA;
+		tag = tag->tail;
+	}
+	while (tag) {
+		q += EXTRA;
+		tag = tag->tail;
+	}
+	return q;
+}
+
+/**
  * Compute the match quotient of the features in a query against the features in a table's
  * metadata.
  *
- * The features are assumed to be sorted and to have no duplicate
- * keys. The query's features must be of type FeatureWithImportance.
- * How a feature contributes to the match quotient depends on its
- * importance, on whether the feature is undefined, defined with the
- * same value (positive match), or defined with a different value
+ * The features are assumed to be sorted. The query's features must be
+ * of type FeatureWithImportance and are assumed to have no duplicate
+ * keys. How a feature contributes to the match quotient depends on
+ * its importance, on whether the feature is undefined, defined with
+ * the same value (positive match), or defined with a different value
  * (negative match), and on the `fuzzy' argument. If the `fuzzy'
  * argument evaluates to true, negative matches and undefined features
  * get a lower penalty.
@@ -241,7 +514,10 @@ matchFeatureLists(const List *query, const List *tableFeatures, int fuzzy) {
 		if (!l1) {
 			if (!l2) break;
 			quotient += extra;
-			l2 = l2->tail;
+			const List *l = l2;
+			l = l->tail;
+			while (l && cmpKeys(l->head, l2->head) == 0) l = l->tail;
+			l2 = l;
 		} else if (!l2) {
 			quotient += undefined;
 			l1 = l1->tail;
@@ -252,15 +528,58 @@ matchFeatureLists(const List *query, const List *tableFeatures, int fuzzy) {
 				l1 = l1->tail;
 			} else if (cmp > 0) {
 				quotient += extra;
-				l2 = l2->tail;
+				const List *l = l2;
+				l = l->tail;
+				while (l && cmpKeys(l->head, l2->head) == 0) l = l->tail;
+				l2 = l;
 			} else {
-				if (strcasecmp(((Feature *)l1->head)->val, ((Feature *)l2->head)->val) ==
-						0)
-					quotient += posMatch;
-				else
-					quotient += negMatch;
+				const List *l = l2;
+				char *k = ((Feature *)l->head)->key;
+				int best = negMatch;
+				if (isLanguageTag(k, MAXSTRING)) {
+					int extraLanguages = 0;
+					while (1) {
+						// special handling of language tags: tags in the
+						// table are intepreted as language ranges
+						List *v = ((Feature *)l->head)->val;
+						List *v1 = ((Feature *)l1->head)->val;
+						int q = matchLanguageTags(v1, v);
+						if (q > 0 && q > best)
+							best = q;
+						else if (!q)
+							extraLanguages += extra;
+						l = l->tail;
+						if (!l || cmpKeys(l->head, l2->head) != 0) break;
+					}
+					if (best > 0)
+						best += ((extraLanguages + 4) /
+								5);	 // penalty for extra languages is lower than penalty
+									 // for fields that are not in query at all
+				} else {
+					while (1) {
+						if (best < 0) {
+							char *v = ((Feature *)l->head)->val;
+							char *v1 = ((Feature *)l1->head)->val;
+							if (strcasecmp(v1, v) == 0)
+								best = posMatch;
+							else if (strcasecmp(k, "unicode-range") == 0) {
+								// special handling of unicode-range: ucs2 in
+								// table also matches ucs4 in query
+								if (strcasecmp(v1, "ucs4") == 0 &&
+										strcasecmp(v, "ucs2") == 0) {
+									best = posMatch;
+									best--;	 // add small penalty to favour ucs4 table
+											 // if it exists
+								}
+							}
+						}
+						l = l->tail;
+						if (!l || cmpKeys(l->head, l2->head) != 0) break;
+					}
+				}
+				quotient += best;
 				l1 = l1->tail;
-				l2 = l2->tail;
+				l2 = l;
 			}
 		}
 	}
@@ -272,8 +591,7 @@ matchFeatureLists(const List *query, const List *tableFeatures, int fuzzy) {
  */
 static int
 isValidChar(char c) {
-	return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-			c == '-' || c == '.' || c == '_';
+	return isAlphaNum(c) || c == '-' || c == '.' || c == '_';
 }
 
 /**
@@ -287,6 +605,8 @@ isSpace(char c) {
 /**
  * Parse a table query into a list of features. Features defined first get a
  * higher importance.
+ *
+ * The returned list must be freed by the caller, using list_free.
  */
 static List *
 parseQuery(const char *query) {
@@ -297,24 +617,68 @@ parseQuery(const char *query) {
 	size_t valSize = 0;
 	const char *c;
 	int pos = 0;
+	int unicodeRange = 0;
 	while (1) {
 		c = &query[pos++];
-		if (isSpace(*c) || (*c == '\n') | (*c == '\0')) {
+		if (isSpace(*c) || (*c == '\n') || (*c == '\0')) {
 			if (key) {
-				char *k = malloc(keySize + 1);
-				k[keySize] = '\0';
-				memcpy(k, key, keySize);
 				char *v = NULL;
 				if (val) {
 					v = malloc(valSize + 1);
 					v[valSize] = '\0';
 					memcpy(v, val, valSize);
 				}
-				FeatureWithImportance f = { feature_new(k, v), 0 };
-				_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'", f.feature.key,
-						f.feature.val);
-				features = list_conj(features, memcpy(malloc(sizeof(f)), &f, sizeof(f)),
-						NULL, NULL, (void (*)(void *))feature_free);
+				if (!v) goto compile_error;
+				char *k = malloc(keySize + 1);
+				k[keySize] = '\0';
+				memcpy(k, key, keySize);
+				if (isLanguageTag(k, keySize)) {
+					List *tag = parseLanguageTag(v);
+					if (!tag) {
+						_lou_logMessage(LOU_LOG_ERROR, "Not a valid language tag: %s", v);
+						free(k);
+						free(v);
+						list_free(features);
+						return NULL;
+					}
+					if (strcasecmp(k, "locale") == 0) {
+						// locale is shorthand for language + region
+						FeatureWithImportance f1 = {
+							feat_new(strdup("language"), tag, list_dup_, list_free_), 0
+						};
+						FeatureWithImportance f2 = { feat_new(strdup("region"),
+															 list_dup(tag), list_dup_,
+															 list_free_),
+							0 };
+						_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'",
+								f1.feature.key, v);
+						_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'",
+								f2.feature.key, v);
+						features = list_conj(features,
+								memcpy(malloc(sizeof(f1)), &f1, sizeof(f1)), NULL,
+								feat_dup_, feat_free_);
+						features = list_conj(features,
+								memcpy(malloc(sizeof(f2)), &f2, sizeof(f2)), NULL,
+								feat_dup_, feat_free_);
+					} else {
+						FeatureWithImportance f = {
+							feat_new(strdup(k), tag, list_dup_, list_free_), 0
+						};
+						_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'", k, v);
+						features = list_conj(features,
+								memcpy(malloc(sizeof(f)), &f, sizeof(f)), NULL, feat_dup_,
+								feat_free_);
+					}
+				} else {
+					FeatureWithImportance f = {
+						feat_new(strdup(k), strdup(v), strdup_, free), 0
+					};
+					_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'", k, v);
+					features =
+							list_conj(features, memcpy(malloc(sizeof(f)), &f, sizeof(f)),
+									NULL, feat_dup_, feat_free_);
+					if (strcasecmp(k, "unicode-range") == 0) unicodeRange = 1;
+				}
 				free(k);
 				free(v);
 				key = val = NULL;
@@ -344,19 +708,33 @@ parseQuery(const char *query) {
 		} else
 			goto compile_error;
 	}
-
+	// add defaults
+	if (!unicodeRange) {
+		// default value of unicode-range is determined by CHARSIZE
+		static char value[5] = "";
+		if (!*value) sprintf(value, "ucs%ld", CHARSIZE);
+		FeatureWithImportance *f = memcpy(malloc(sizeof(FeatureWithImportance)),
+				(&(FeatureWithImportance){
+						feat_new(strdup("unicode-range"), strdup(value), strdup_, free),
+						-1 }),
+				sizeof(FeatureWithImportance));
+		_lou_logMessage(LOU_LOG_DEBUG, "Query has feature '%s:%s'", f->feature.key,
+				f->feature.val);
+		features = list_conj(features, f, NULL, feat_dup_, feat_free_);
+	}
+	// attach importance to features
 	{
 		int k = 1;
 		List *l;
-
 		for (l = features; l; l = l->tail) {
 			FeatureWithImportance *f = l->head;
 			f->importance = k++;
 		}
 	}
-	return list_sort(features, (int (*)(void *, void *))cmpKeys);
+	// sort features by key (alphabetical order)
+	return list_sort(features, cmpKeys_);
 compile_error:
-	_lou_logMessage(LOU_LOG_ERROR, "Unexpected character '%c' at position %d", c, pos);
+	_lou_logMessage(LOU_LOG_ERROR, "Unexpected character '%c' at position %d", *c, pos);
 	list_free(features);
 	return NULL;
 }
@@ -374,7 +752,8 @@ widestrToStr(const widechar *str, size_t n) {
 }
 
 /**
- * Extract a list of features from a table.
+ * Extract a list of features from a table. The features are of type
+ * FeatureWithLineNumber.
  */
 static List *
 analyzeTable(const char *table, int activeOnly) {
@@ -408,6 +787,9 @@ analyzeTable(const char *table, int activeOnly) {
 	info.status = 0;
 	info.lineNumber = 0;
 	if ((info.in = fopen(info.fileName, "rb"))) {
+		FeatureWithLineNumber *region = NULL;
+		FeatureWithLineNumber *language = NULL;
+		int unicodeRange = 0;
 		while (_lou_getALine(&info)) {
 			if (info.linelen == 0)
 				;
@@ -432,6 +814,8 @@ analyzeTable(const char *table, int activeOnly) {
 							keySize++;
 							info.linepos++;
 						}
+						char *k = widestrToStr(key, keySize);
+						int isLangTag = isLanguageTag(k, keySize);
 						if (info.linepos < info.linelen &&
 								info.line[info.linepos] == ':') {
 							info.linepos++;
@@ -440,7 +824,9 @@ analyzeTable(const char *table, int activeOnly) {
 								info.linepos++;
 							if (info.linepos < info.linelen &&
 									(!active ||
-											isValidChar((char)info.line[info.linepos]))) {
+											isValidChar((char)info.line[info.linepos]) ||
+											(isLangTag &&
+													'*' == info.line[info.linepos]))) {
 								val = &info.line[info.linepos];
 								valSize = 1;
 								info.linepos++;
@@ -451,14 +837,18 @@ analyzeTable(const char *table, int activeOnly) {
 									valSize++;
 									info.linepos++;
 								}
-							} else
+							} else {
+								free(k);
 								goto compile_error;
+							}
 						}
 						if (info.linepos == info.linelen) {
-							char *k = widestrToStr(key, keySize);
 							char *v = val ? widestrToStr(val, valSize) : NULL;
+							if (!v) {
+								free(k);
+								goto compile_error;
+							}
 							if (!active) {
-								if (!v) goto compile_error;
 								// normalize space
 								int i = 0;
 								int j = 0;
@@ -478,16 +868,81 @@ analyzeTable(const char *table, int activeOnly) {
 								if (j > 0 && v[j - 1] == ' ') j--;
 								v[j] = '\0';
 							}
-							Feature f = feature_new(k, v);
-							_lou_logMessage(LOU_LOG_DEBUG, "Table has feature '%s:%s'",
-									f.key, f.val);
-							features = list_conj(features,
-									memcpy(malloc(sizeof(f)), &f, sizeof(f)), NULL, NULL,
-									(void (*)(void *))feature_free);
+							if (isLangTag) {
+								List *tag = parseLanguageTag(v);
+								if (!tag) {
+									_lou_logMessage(LOU_LOG_ERROR,
+											"Not a valid language tag: %s (line %d)", v,
+											info.lineNumber);
+									list_free(features);
+									return NULL;
+								}
+								if (strcasecmp(k, "locale") == 0) {
+									FeatureWithLineNumber *f1 = memcpy(
+											malloc(sizeof(FeatureWithLineNumber)),
+											(&(FeatureWithLineNumber){
+													feat_new(strdup("language"), tag,
+															list_dup_, list_free_),
+													info.lineNumber }),
+											sizeof(FeatureWithLineNumber));
+									FeatureWithLineNumber *f2 = memcpy(
+											malloc(sizeof(FeatureWithLineNumber)),
+											(&(FeatureWithLineNumber){
+													feat_new(strdup("region"),
+															list_dup(tag), list_dup_,
+															list_free_),
+													info.lineNumber }),
+											sizeof(FeatureWithLineNumber));
+									_lou_logMessage(LOU_LOG_DEBUG,
+											"Table has feature '%s:%s'", f1->feature.key,
+											v);
+									_lou_logMessage(LOU_LOG_DEBUG,
+											"Table has feature '%s:%s'", f2->feature.key,
+											v);
+									features = list_conj(
+											features, f1, NULL, feat_dup_, feat_free_);
+									features = list_conj(
+											features, f2, NULL, feat_dup_, feat_free_);
+									if (!language) language = f1;
+									if (!region) region = f2;
+								} else {
+									FeatureWithLineNumber *f = memcpy(
+											malloc(sizeof(FeatureWithLineNumber)),
+											(&(FeatureWithLineNumber){
+													feat_new(strdup(k), tag, list_dup_,
+															list_free_),
+													info.lineNumber }),
+											sizeof(FeatureWithLineNumber));
+									_lou_logMessage(LOU_LOG_DEBUG,
+											"Table has feature '%s:%s'", k, v);
+									features = list_conj(
+											features, f, NULL, feat_dup_, feat_free_);
+									if (strcasecmp(k, "language") == 0) {
+										if (!language) language = f;
+									} else if (strcasecmp(k, "region") == 0) {
+										if (!region) region = f;
+									}
+								}
+							} else {
+								FeatureWithLineNumber *f =
+										memcpy(malloc(sizeof(FeatureWithLineNumber)),
+												(&(FeatureWithLineNumber){
+														feat_new(strdup(k), strdup(v),
+																strdup_, free),
+														info.lineNumber }),
+												sizeof(FeatureWithLineNumber));
+								_lou_logMessage(
+										LOU_LOG_DEBUG, "Table has feature '%s:%s'", k, v);
+								features = list_conj(
+										features, f, NULL, feat_dup_, feat_free_);
+								if (strcasecmp(k, "unicode-range") == 0) unicodeRange = 1;
+							}
 							free(k);
 							free(v);
-						} else
+						} else {
+							free(k);
 							goto compile_error;
+						}
 					} else
 						goto compile_error;
 				}
@@ -495,9 +950,34 @@ analyzeTable(const char *table, int activeOnly) {
 				break;
 		}
 		fclose(info.in);
+		// add defaults
+		if (!region && language) {
+			region = memcpy(malloc(sizeof(FeatureWithLineNumber)),
+					(&(FeatureWithLineNumber){
+							feat_new(strdup("region"), list_dup(language->feature.val),
+									list_dup_, list_free_),
+							-1 }),
+					sizeof(FeatureWithLineNumber));
+			char *v = serializeLanguageTag(region->feature.val);
+			_lou_logMessage(
+					LOU_LOG_DEBUG, "Table has feature '%s:%s'", region->feature.key, v);
+			free(v);
+			features = list_conj(features, region, NULL, feat_dup_, feat_free_);
+		}
+		if (features && !unicodeRange) {
+			// by default we assume unicode-range: ucs2
+			FeatureWithLineNumber *f = memcpy(malloc(sizeof(FeatureWithLineNumber)),
+					(&(FeatureWithLineNumber){ feat_new(strdup("unicode-range"),
+													   strdup("ucs2"), strdup_, free),
+							-1 }),
+					sizeof(FeatureWithLineNumber));
+			_lou_logMessage(LOU_LOG_DEBUG, "Table has feature '%s:%s'", f->feature.key,
+					f->feature.val);
+			features = list_conj(features, f, NULL, feat_dup_, feat_free_);
+		}
 	} else
 		_lou_logMessage(LOU_LOG_ERROR, "Cannot open table '%s'", info.fileName);
-	return list_sort(features, (int (*)(void *, void *))cmpKeys);
+	return list_sort(features, cmpFeatures_);
 compile_error:
 	if (info.linepos < info.linelen)
 		_lou_logMessage(LOU_LOG_ERROR, "Unexpected character '%c' on line %d, column %d",
@@ -508,6 +988,12 @@ compile_error:
 	return NULL;
 }
 
+/**
+ * List of discoverable tables and corresponding metadata.
+ *
+ * The list is freed by _lou_freeTableIndex, which is invoked by lou_free. It should not
+ * be copied.
+ */
 static List *tableIndex = NULL;
 
 void EXPORT_CALL
@@ -521,16 +1007,25 @@ lou_indexTables(const char **tables) {
 		if (features) {
 			TableMeta m = { strdup(*table), features };
 			tableIndex = list_conj(tableIndex, memcpy(malloc(sizeof(m)), &m, sizeof(m)),
-					NULL, NULL, free);
+					NULL, NULL, meta_free_);
 		}
 	}
 	if (!tableIndex) _lou_logMessage(LOU_LOG_WARN, "No tables were indexed");
 }
 
+// called by lou_free
+void EXPORT_CALL
+_lou_freeTableIndex(void) {
+	list_free(tableIndex);
+	tableIndex = NULL;
+}
+
 /**
  * Returns the list of files found in a single directory.
+ *
+ * Must be freed by the caller, using list_free.
  */
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(_WIN32)
 static List *
 listDir(List *list, char *dirName) {
 	static char glob[MAXSTRING];
@@ -543,9 +1038,9 @@ listDir(List *list, char *dirName) {
 		_lou_logMessage(LOU_LOG_WARN, "%s is not a directory", dirName);
 	} else {
 		do {
-			if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+			if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
 				sprintf(fileName, "%s%c%s", dirName, DIR_SEP, ffd.cFileName);
-				list = list_conj(list, strdup(fileName), NULL, NULL, free);
+				list = list_conj(list, strdup(fileName), NULL, strdup_, free);
 			}
 		} while (FindNextFileA(hFind, &ffd));
 		FindClose(hFind);
@@ -563,7 +1058,7 @@ listDir(List *list, char *dirName) {
 		while ((file = readdir(dir))) {
 			sprintf(fileName, "%s%c%s", dirName, DIR_SEP, file->d_name);
 			if (stat(fileName, &info) == 0 && !(info.st_mode & S_IFDIR)) {
-				list = list_conj(list, strdup(fileName), NULL, NULL, free);
+				list = list_conj(list, strdup(fileName), NULL, strdup_, free);
 			}
 		}
 		closedir(dir);
@@ -585,8 +1080,7 @@ listFiles(char *searchPath) {
 	int pos = 0;
 	int n;
 	while (1) {
-		for (n = 0; searchPath[pos + n] != '\0' && searchPath[pos + n] != ','; n++)
-			;
+		for (n = 0; searchPath[pos + n] != '\0' && searchPath[pos + n] != ','; n++);
 		dirName = malloc(n + 1);
 		dirName[n] = '\0';
 		memcpy(dirName, &searchPath[pos], n);
@@ -609,8 +1103,12 @@ indexTablePath(void) {
 	_lou_logMessage(
 			LOU_LOG_WARN, "Tables have not been indexed yet. Indexing LOUIS_TABLEPATH.");
 	searchPath = _lou_getTablePath();
+	if (searchPath == NULL) {
+		_lou_logMessage(LOU_LOG_ERROR, "Failed to get table path");
+		return;
+	}
 	tables = listFiles(searchPath);
-	tablesArray = list_toArray(tables, NULL);
+	tablesArray = list_toArray(tables, 0);
 	lou_indexTables(tablesArray);
 	free(searchPath);
 	list_free(tables);
@@ -643,6 +1141,11 @@ lou_findTable(const char *query) {
 	}
 }
 
+void EXPORT_CALL
+lou_freeTableFile(char *table) {
+	free(table);
+}
+
 typedef struct {
 	char *name;
 	int matchQuotient;
@@ -656,6 +1159,27 @@ cmpMatches(TableMatch *m1, TableMatch *m2) {
 		return 1;
 }
 
+/**
+ * Adapter, see list_free_/list_dup_ above.
+ */
+static int
+cmpMatches_(void *v1, void *v2) {
+	return cmpMatches(v1, v2);
+}
+
+/**
+ * Adapter so that strcmp can be used as a generic List comparator (typed
+ * `int (*)(void *, void *)') without calling through an incompatibly-typed
+ * function pointer, which is undefined behaviour.
+ */
+static int
+strcmp_(void *v1, void *v2) {
+	return strcmp(v1, v2);
+}
+
+/**
+ * The returned array and strings must be freed by the caller.
+ */
 char **EXPORT_CALL
 lou_findTables(const char *query) {
 	char **tablesArray;
@@ -669,7 +1193,7 @@ lou_findTables(const char *query) {
 		if (quotient > 0) {
 			TableMatch m = { strdup(table->name), quotient };
 			matches = list_conj(matches, memcpy(malloc(sizeof(m)), &m, sizeof(m)),
-					(int (*)(void *, void *))cmpMatches, NULL, free);
+					cmpMatches_, NULL, free);
 		}
 	}
 	list_free(queryFeatures);
@@ -677,8 +1201,8 @@ lou_findTables(const char *query) {
 		_lou_logMessage(LOU_LOG_INFO, "%d matches found", list_size(matches));
 		int i = 0;
 		tablesArray = malloc((1 + list_size(matches)) * sizeof(void *));
-		for (; matches; matches = matches->tail)
-			tablesArray[i++] = ((TableMatch *)matches->head)->name;
+		for (List *m = matches; m; m = m->tail)
+			tablesArray[i++] = ((TableMatch *)m->head)->name;
 		tablesArray[i] = NULL;
 		list_free(matches);
 		return tablesArray;
@@ -693,15 +1217,29 @@ lou_getTableInfo(const char *table, const char *key) {
 	char *value = NULL;
 	List *features = analyzeTable(table, 0);
 	List *l;
+	int lineNumber = -1;  // line number of first matching feature
 	for (l = features; l; l = l->tail) {
-		Feature *f = l->head;
-		if (strcasecmp(f->key, key) == 0) {
-			value = strdup(f->val);
-			list_free(features);
+		FeatureWithLineNumber *f = l->head;
+		int cmp = strcasecmp(f->feature.key, key);
+		if (cmp == 0) {
+			if (lineNumber < 0 || lineNumber > f->lineNumber) {
+				if (isLanguageTag(key, MAXSTRING))
+					value = serializeLanguageTag(f->feature.val);
+				else
+					value = strdup(f->feature.val);
+				lineNumber = f->lineNumber;
+			}
+		} else if (cmp > 0) {
 			break;
 		}
 	}
+	list_free(features);
 	return value;
+}
+
+void EXPORT_CALL
+lou_freeTableInfo(char *info) {
+	free(info);
 }
 
 char **EXPORT_CALL
@@ -712,10 +1250,9 @@ lou_listTables(void) {
 	if (!tableIndex) indexTablePath();
 	for (l = tableIndex; l; l = l->tail) {
 		TableMeta *table = l->head;
-		tables = list_conj(
-				tables, strdup(table->name), (int (*)(void *, void *))strcmp, NULL, NULL);
+		tables = list_conj(tables, strdup(table->name), strcmp_, NULL, NULL);
 	}
-	tablesArray = list_toArray(tables, NULL);
+	tablesArray = list_toArray(tables, 0);
 	list_free(tables);
 	return tablesArray;
 }

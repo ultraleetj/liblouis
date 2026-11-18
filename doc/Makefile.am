@@ -1,19 +1,15 @@
-doc_DATA = \
-	liblouis.html \
-	liblouis.txt
-
-EXTRA_DIST = \
-	liblouis.html \
-	liblouis.txt
-
-CLEANFILES = $(EXTRA_DIST)
 
 info_TEXINFOS = liblouis.texi
-
-# generate one big html file
-AM_MAKEINFOHTMLFLAGS = --no-headers --no-split
 
 SUFFIXES                = .txt
 
 .texi.txt:
 	$(MAKEINFO) --plaintext $< -o $@
+
+# Generate single-page HTML in addition to the default multi-page
+html-local: liblouis-single.html
+
+liblouis-single.html: liblouis.texi
+	$(MAKEINFO) --html --no-headers --no-split -I $(srcdir) -o $@ $<
+
+CLEANFILES = liblouis-single.html

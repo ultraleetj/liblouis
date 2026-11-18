@@ -29,6 +29,8 @@
  * @brief Common utility functions
  */
 
+#include "config.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,7 +40,6 @@
 #include <sys/stat.h>
 
 #include "internal.h"
-#include "config.h"
 
 /* Contributed by Michel Such <michel.such@free.fr> */
 #ifdef _WIN32
@@ -115,7 +116,21 @@ toLowercase(widechar c, const TranslationTableHeader *table) {
 	offset = table->characters[_lou_charHash(c)];
 	while (offset) {
 		character = (TranslationTableCharacter *)&table->ruleArea[offset];
-		if (character->realchar == c) return character->lowercase;
+		if (character->value == c) {
+			if (character->mode & CTC_UpperCase) {
+				const TranslationTableCharacter *c = character;
+				if (c->basechar)
+					c = (TranslationTableCharacter *)&table->ruleArea[c->basechar];
+				while (1) {
+					if ((c->mode & (character->mode & ~CTC_UpperCase)) ==
+							(character->mode & ~CTC_UpperCase))
+						return c->value;
+					if (!c->linked) break;
+					c = (TranslationTableCharacter *)&table->ruleArea[c->linked];
+				}
+			}
+			return character->value;
+		}
 		offset = character->next;
 	}
 	return c;
@@ -319,8 +334,8 @@ _lou_isValidMode(int mode) {
 	// mask out all valid mode bits. If you end up with some bits set
 	// then the input isn't valid. See
 	// https://en.wikipedia.org/wiki/Material_nonimplication
-	for (int i = 0; i < (sizeof(validTranslationModes) / sizeof(*validTranslationModes));
-			i++)
+	for (size_t i = 0;
+			i < (sizeof(validTranslationModes) / sizeof(*validTranslationModes)); i++)
 		mode &= ~validTranslationModes[i];
 	return !mode;
 }

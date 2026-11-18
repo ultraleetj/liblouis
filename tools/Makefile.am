@@ -12,7 +12,19 @@ LDADD =							\
 	$(top_builddir)/liblouis/liblouis.la		\
 	$(top_builddir)/tools/gnulib/libgnutools.la	\
 	libbrlcheck.la		\
-	$(LTLIBINTL)
+	$(LTLIBINTL) $(LIBFUZZER_NO_MAIN)
+
+AM_LDFLAGS =
+
+# Pass x86_64 and/or arm64 in compiler and linker flags if asked
+if CLANG_ARCH_X86_64
+AM_CPPFLAGS += -arch x86_64
+AM_LDFLAGS += -arch x86_64
+endif
+if CLANG_ARCH_ARM64
+AM_CPPFLAGS += -arch arm64
+AM_LDFLAGS += -arch arm64
+endif
 
 # libbrlcheck is a convenience library that contains functionality to
 # check a translation. This is mostly needed for the tests in ../tests
@@ -75,6 +87,9 @@ nobase_dist_bin_SCRIPTS = \
 	lou_maketable.d/utils.py                \
 	lou_maketable.d/wrap_patgen.sh
 endif
+
+# package the lou_maketable wrapper in the tar ball
+EXTRA_DIST = lou_maketable
 
 if HAVE_SOURCE_FORMATTER
 format-sources-local:

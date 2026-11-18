@@ -4,12 +4,17 @@
 #-index-name: Norwegian, uncontracted, 8-dot, 6-dot fallback
 #-display-name: Norwegian 8-dot uncontracted braille with 6-dot fallback
 #
-#+locale:no
+#+language:no
+#+language:nb
+#+language:nn
 #+type:literary
 #+contraction:no
 #+dots:8
 #+grade:0
 #+variant:fallback-6dot
+# Marked as "direction:forward" by Bue Vester-Andersen
+# as tests only run forward.
+#+direction:forward
 #
 #  Copyright (C) 2015 NLB Norwegian library of talking books and braille, http://www.nlb.no/
 #
@@ -18,16 +23,11 @@
 #
 # Created August 2015 by Jostein Austvik Jacobsen <jostein@nlb.com> and Ammar Usama <ammar.usama@nlb.no>
 #
-#-author-name: Jostein Austvik Jacobsen
-#-author-email: jostein@nlb.no
-#-author-url: https://github.com/josteinaj
-#
-#-author-name: Ammar Usama
-#-author-email: ammar.usama@nlb.no
-#-author-url: https://github.com/usama49
+#-author: Jostein Austvik Jacobsen <jostein@nlb.no>
+#-author: Ammar Usama <ammar.usama@nlb.no>
 #
 # Official norwegian braille specifications are collected here:
-# http://liblouis.org/braille-specs/norwegian
+# http://liblouis.io/braille-specs/norwegian
 # This specific table combines 8 dot braille with a fallback mechanism to
 # 6 dot braille in cases where a character is defined in 6 dot but not 8 dot.
 # The 8 dot table is based on the document "Punkttabell for JAWS".

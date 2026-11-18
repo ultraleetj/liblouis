@@ -24,11 +24,11 @@
 # the = sign should be replaced internally by the corresponding dot
 # pattern at compile time.
 
+display: tables/unicode.dis
 table: |
-  include tables/unicode.dis
   punctuation ; 56
   include tables/latinLetterDef6Dots.uti
-  uplow Óó 56-135,56-135
+  lowercase ó 56-135
   include tables/unicode-braille.utb
   always ooo 135-135
   word foobar =

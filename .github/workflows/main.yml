@@ -1,60 +1,49 @@
-name: Make check/distcheck
+name: Make check
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master ]
+    paths-ignore:
+      - README
+      - NEWS
   pull_request:
     branches: [ master ]
 
+permissions:  # added using https://github.com/step-security/secure-workflows
+  contents: read
+
 jobs:
   build:
-    name: Build with UCS2
-
+    name: Build with ${{ matrix.ucs }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true # do not compile for ucs4 if ucs2 fails
+      matrix:
+        ucs: [ucs2, ucs4]
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Harden Runner
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+      with:
+        egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
+
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
     - name: Install dependencies
       run: sudo apt-get update -qq && sudo apt-get install -y libyaml-dev texinfo texlive
-    - name: Autogen && configure
-      run: |
-        ./autogen.sh
-        ./configure
-    - name: Make
-      run: make
+    - name: Autogen
+      run: ./autogen.sh
+    - name: Configure
+      run: ./configure
+      if: matrix.ucs == 'ucs2'
+    - name: Configure with ucs4
+      run: ./configure --enable-ucs4
+      if: matrix.ucs == 'ucs4'
     - name: Make check
       run: make check
     - name: Store the test suite log
       if: ${{ always() }} # store the test suite log even if the tests failed
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: test-suite-ucs2.log
+        name: test-suite-${{ matrix.ucs }}.log
         path: tests/test-suite.log
-    - name: Make distcheck
-      run: make distcheck
-
-  build-ucs4:
-    name: Build with UCS4
-
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: sudo apt-get update -qq && sudo apt-get install -y libyaml-dev texinfo texlive
-    - name: autogen && configure
-      run: |
-        ./autogen.sh
-        ./configure --enable-ucs4
-    - name: Make
-      run: make
-    - name: Make check
-      run: make check
-    - name: Store the test suite log
-      if: ${{ always() }} # store the test suite log even if the tests failed
-      uses: actions/upload-artifact@v2
-      with:
-        name: test-suite-ucs4.log
-        path: tests/test-suite.log
-    - name: Make distcheck
-      run: make distcheck

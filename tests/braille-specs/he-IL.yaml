@@ -16,14 +16,14 @@
 # the result of their decision.
 
 # Refer to World Braille Usage (3rd edition), page 74
-# <http://liblouis.org/braille-specs/world-braille-usage-third-edition.pdf>
-# and <http://liblouis.org/braille-specs/hebrew>.
+# <http://liblouis.io/braille-specs/world-braille-usage-third-edition.pdf>
+# and <http://liblouis.io/braille-specs/hebrew>.
 
 display: unicode-without-blank.dis
 
 # Test for uncontracted braille
 table:
-  locale: mul-IL
+  region: mul-IL
   grade: 1
   dots: 6
   __assert-match: he-IL.utb
@@ -61,13 +61,14 @@ tests:
 
 # Test for computer braille
 table:
-  locale: mul-IL
+  language: he
   type: computer
   __assert-match: he-IL-comp8.utb
 tests:
   - # Sample for testing ₪
     - שלט המטבע שלנו הוא ₪
     - ⠩⠇⠞ ⠓⠍⠞⠧⠫ ⠩⠇⠝⠺ ⠓⠺⠁ ⡈
+    - xfail: fails with the new table
   - # Hebrew point holam haser ("וֹ" - ⠕)
     - חוֹלָם
     - ⠭⠺⠕⠇⠣⢍

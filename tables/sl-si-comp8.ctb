@@ -2,9 +2,12 @@
 #-index-name: Slovenian, computer
 #-display-name: Slovenian computer braille
 #
-#+locale:sl
+#+language:sl
 #+type:computer
 #+dots:8
+# Marked as "direction:both" by Bue Vester-Andersen
+# as it is a computer Braille table.
+#+direction:both
 #
 # TODO: Please correct the metadata above. It is not meant to be
 # accurate nor complete. It hasn't been verified by the table
@@ -74,6 +77,8 @@ punctuation < 2468		LESS-THAN SIGN
 punctuation = 23568		EQUALS SIGN
 punctuation > 1358		GREATER-THAN SIGN
 punctuation ? 26		QUESTION MARK
+punctuation ! 235		EXCLAMATION MARK
+punctuation # 3456		NUMBER SIGN
 
 # preveri v seznamu
 punctuation @ 1456		COMMERCIAL AT

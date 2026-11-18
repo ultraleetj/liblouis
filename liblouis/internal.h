@@ -36,6 +36,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include "liblouis.h"
 
@@ -51,6 +52,7 @@ extern "C" {
 
 #ifdef _MSC_VER
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #endif
 
 #define NUMVAR 50
@@ -75,8 +77,10 @@ typedef struct intCharTupple {
 
 #define MAXPASS 4
 #define MAXSTRING 2048
-
-#define MAX_EMPH_CLASSES 10  // {emph_1...emph_10} in typeforms enum (liblouis.h)
+#define MAX_MACRO_VAR 100  // maximal number of variable substitutions a macro can contain
+#define MAX_EMPH_CLASSES 10	  // maximal number of emphasis classes
+#define MAX_MODES 6			  // maximal number of modes that can be handled
+#define MAX_SOURCE_FILES 100  // maximal number of files a table can consist of
 
 typedef unsigned int TranslationTableOffset;
 
@@ -108,7 +112,7 @@ typedef enum {
 	CTC_SeqAfter = 0x8000,
 	/* The following 8 are reserved for %0 to %7 (in no particular order) */
 	/* Be careful with changing these values (and also CTC_EndOfInput) because in
-	   pattern_compile_expression they are stored in a unsigned int after cutting of the
+	   pattern_compile_expression they are stored in a unsigned int after cutting off the
 	   16 least significant bits. */
 	CTC_UserDefined1 = 0x10000,
 	CTC_UserDefined2 = 0x20000,
@@ -118,11 +122,11 @@ typedef enum {
 	CTC_UserDefined6 = 0x200000,
 	CTC_UserDefined7 = 0x400000,
 	CTC_UserDefined8 = 0x800000,
-	CTC_EndOfInput = 0x1000000,  // only used by pattern matcher
-	CTC_EmpMatch = 0x2000000,	// only used in TranslationTableRule->before and
+	CTC_EndOfInput = 0x1000000,	 // only used by pattern matcher
+	CTC_EmpMatch = 0x2000000,	 // only used in TranslationTableRule->before and
 								 // TranslationTableRule->after
 	CTC_MidEndNumericMode = 0x4000000,
-	/* At least 37 more bits available in a unsigned long long (at least 64 bits). Used
+	/* At least 37 more bits available in an unsigned long long (at least 64 bits). Used
 	   for custom attributes 9 to 45. These need to be the last values of the enum. */
 	CTC_UserDefined9 = 0x8000000,
 	CTC_UserDefined10 = 0x10000000,
@@ -206,13 +210,19 @@ typedef struct {
 } CharDotsMapping;
 
 typedef struct {
+	const char *sourceFile;
+	int sourceLine;
 	TranslationTableOffset next;
 	TranslationTableOffset definitionRule;
 	TranslationTableOffset otherRules;
 	TranslationTableCharacterAttributes attributes;
-	widechar realchar;
-	widechar uppercase;
-	widechar lowercase;
+	TranslationTableCharacterAttributes mode;
+	TranslationTableOffset compRule;
+	widechar value;
+	TranslationTableOffset basechar;
+	TranslationTableOffset linked;
+	int ruleIndex; /** sequence number of rule within table */
+	int finalized;
 } TranslationTableCharacter;
 
 typedef enum { /* Op codes */
@@ -228,12 +238,21 @@ typedef enum { /* Op codes */
 	CTO_BegCapsPhrase,
 	CTO_EndCapsPhrase,
 	CTO_LenCapsPhrase,
+	CTO_ModeLetter,
+	CTO_BegModeWord,
+	CTO_EndModeWord,
+	CTO_BegMode,
+	CTO_EndMode,
+	CTO_BegModePhrase,
+	CTO_EndModePhrase,
+	CTO_LenModePhrase,
 	/* End of ordered opcodes */
 	CTO_LetterSign,
 	CTO_NoLetsignBefore,
 	CTO_NoLetsign,
 	CTO_NoLetsignAfter,
 	CTO_NumberSign,
+	CTO_NoNumberSign,
 	CTO_NumericModeChars,
 	CTO_MidEndNumericModeChars,
 	CTO_NumericNoContractChars,
@@ -259,22 +278,13 @@ typedef enum { /* Op codes */
 	CTO_EmphModeChars,
 	CTO_NoEmphChars,
 	CTO_BegComp,
-	CTO_CompBegEmph1,
-	CTO_CompEndEmph1,
-	CTO_CompBegEmph2,
-	CTO_CompEndEmph2,
-	CTO_CompBegEmph3,
-	CTO_CompEndEmph3,
-	CTO_CompCapSign,
-	CTO_CompBegCaps,
-	CTO_CompEndCaps,
 	CTO_EndComp,
 	CTO_NoContractSign,
 	CTO_MultInd,
 	CTO_CompDots,
 	CTO_Comp6,
-	CTO_Class,  /* define a character class */
-	CTO_After,  /* only match if after character in class */
+	CTO_Class,	/* define a character class */
+	CTO_After,	/* only match if after character in class */
 	CTO_Before, /* only match if before character in class 30 */
 	CTO_NoBack,
 	CTO_NoFor,
@@ -339,125 +349,24 @@ typedef enum { /* Op codes */
 	CTO_Match,
 	CTO_BackMatch,
 	CTO_Attribute,
+	CTO_Base,
+	CTO_Macro,
 	CTO_None,
 
-	/* More internal opcodes */
-	CTO_LetterRule,
-	CTO_NumberRule,
-	CTO_NoContractRule,
+	/** "internal" opcodes */
+	CTO_EndCapsPhraseBefore,
+	CTO_EndCapsPhraseAfter,
 
-	/* Start of (11 x 9) internal opcodes values that match
-	 * {"singlelettercaps"..."lenemphphrase"}
-	 * Do not change the order of the following opcodes! */
-	CTO_CapsLetterRule,
-	CTO_BegCapsWordRule,
-	CTO_EndCapsWordRule,
-	CTO_BegCapsRule,
-	CTO_EndCapsRule,
-	CTO_BegCapsPhraseRule,
-	CTO_EndCapsPhraseBeforeRule,
-	CTO_EndCapsPhraseAfterRule,
-	CTO_Emph1LetterRule,
-	CTO_BegEmph1WordRule,
-	CTO_EndEmph1WordRule,
-	CTO_BegEmph1Rule,
-	CTO_EndEmph1Rule,
-	CTO_BegEmph1PhraseRule,
-	CTO_EndEmph1PhraseBeforeRule,
-	CTO_EndEmph1PhraseAfterRule,
-	CTO_Emph2LetterRule,
-	CTO_BegEmph2WordRule,
-	CTO_EndEmph2WordRule,
-	CTO_BegEmph2Rule,
-	CTO_EndEmph2Rule,
-	CTO_BegEmph2PhraseRule,
-	CTO_EndEmph2PhraseBeforeRule,
-	CTO_EndEmph2PhraseAfterRule,
-	CTO_Emph3LetterRule,
-	CTO_BegEmph3WordRule,
-	CTO_EndEmph3WordRule,
-	CTO_BegEmph3Rule,
-	CTO_EndEmph3Rule,
-	CTO_BegEmph3PhraseRule,
-	CTO_EndEmph3PhraseBeforeRule,
-	CTO_EndEmph3PhraseAfterRule,
-	CTO_Emph4LetterRule,
-	CTO_BegEmph4WordRule,
-	CTO_EndEmph4WordRule,
-	CTO_BegEmph4Rule,
-	CTO_EndEmph4Rule,
-	CTO_BegEmph4PhraseRule,
-	CTO_EndEmph4PhraseBeforeRule,
-	CTO_EndEmph4PhraseAfterRule,
-	CTO_Emph5LetterRule,
-	CTO_BegEmph5WordRule,
-	CTO_EndEmph5WordRule,
-	CTO_BegEmph5Rule,
-	CTO_EndEmph5Rule,
-	CTO_BegEmph5PhraseRule,
-	CTO_EndEmph5PhraseBeforeRule,
-	CTO_EndEmph5PhraseAfterRule,
-	CTO_Emph6LetterRule,
-	CTO_BegEmph6WordRule,
-	CTO_EndEmph6WordRule,
-	CTO_BegEmph6Rule,
-	CTO_EndEmph6Rule,
-	CTO_BegEmph6PhraseRule,
-	CTO_EndEmph6PhraseBeforeRule,
-	CTO_EndEmph6PhraseAfterRule,
-	CTO_Emph7LetterRule,
-	CTO_BegEmph7WordRule,
-	CTO_EndEmph7WordRule,
-	CTO_BegEmph7Rule,
-	CTO_EndEmph7Rule,
-	CTO_BegEmph7PhraseRule,
-	CTO_EndEmph7PhraseBeforeRule,
-	CTO_EndEmph7PhraseAfterRule,
-	CTO_Emph8LetterRule,
-	CTO_BegEmph8WordRule,
-	CTO_EndEmph8WordRule,
-	CTO_BegEmph8Rule,
-	CTO_EndEmph8Rule,
-	CTO_BegEmph8PhraseRule,
-	CTO_EndEmph8PhraseBeforeRule,
-	CTO_EndEmph8PhraseAfterRule,
-	CTO_Emph9LetterRule,
-	CTO_BegEmph9WordRule,
-	CTO_EndEmph9WordRule,
-	CTO_BegEmph9Rule,
-	CTO_EndEmph9Rule,
-	CTO_BegEmph9PhraseRule,
-	CTO_EndEmph9PhraseBeforeRule,
-	CTO_EndEmph9PhraseAfterRule,
-	CTO_Emph10LetterRule,
-	CTO_BegEmph10WordRule,
-	CTO_EndEmph10WordRule,
-	CTO_BegEmph10Rule,
-	CTO_EndEmph10Rule,
-	CTO_BegEmph10PhraseRule,
-	CTO_EndEmph10PhraseBeforeRule,
-	CTO_EndEmph10PhraseAfterRule,
-	/* End of ordered (10 x 9) internal opcodes */
-
-	CTO_BegCompRule,
-	CTO_CompBegEmph1Rule,
-	CTO_CompEndEmph1Rule,
-	CTO_CompBegEmph2Rule,
-	CTO_CompEndEmrh2Rule,
-	CTO_CompBegEmph3Rule,
-	CTO_CompEndEmph3Rule,
-	CTO_CompCapSignRule,
-	CTO_CompBegCapsRule,
-	CTO_CompEndCapsRule,
-	CTO_EndCompRule,
-	CTO_CapsNoContRule,
 	CTO_All
 } TranslationTableOpcode;
 
 typedef struct {
-	TranslationTableOffset charsnext;			/** next chars entry */
-	TranslationTableOffset dotsnext;			/** next dots entry */
-	TranslationTableCharacterAttributes after;  /** character types which must follow */
+	const char *sourceFile;
+	int sourceLine;
+	int index;								   /** sequence number of rule within table */
+	TranslationTableOffset charsnext;		   /** next chars entry */
+	TranslationTableOffset dotsnext;		   /** next dots entry */
+	TranslationTableCharacterAttributes after; /** character types which must follow */
 	TranslationTableCharacterAttributes before; /** character types which must precede */
 	TranslationTableOffset patterns;			/** before and after patterns */
 	TranslationTableOpcode opcode; /** rule for testing validity of replacement */
@@ -501,6 +410,15 @@ typedef struct RuleName {
 } RuleName;
 
 typedef struct {
+	/* either typeform or mode should be set, not both */
+	formtype typeform; /* corresponding value in "typeforms" enum */
+	TranslationTableCharacterAttributes mode; /* corresponding character attribute */
+	unsigned int value;						  /* bit field that contains a single "1" */
+	unsigned short
+			rule; /* emphasis rules (index in emphRules, emphModeChars and noEmphChars) */
+} EmphasisClass;
+
+typedef struct {
 	TranslationTableOffset tableSize;
 	TranslationTableOffset bytesUsed;
 	TranslationTableOffset charToDots[HASHNUM];
@@ -524,9 +442,12 @@ typedef struct { /* translation table */
 			numberedAttributes[8]; /* attributes 0-7 used in match rules (could also be
 								   stored in `characterClasses', but this is slightly
 								   faster) */
-	int usesAttributeOrClass;	  /* 1 = attribute, 2 = class */
+	int usesAttributeOrClass;	   /* 1 = attribute, 2 = class */
+	char *sourceFiles[MAX_SOURCE_FILES + 1];
+	int ruleCounter;
 
 	/* needed for translation or other api functions */
+	int finalized;
 	int capsNoCont;
 	int numPasses;
 	int corrections;
@@ -538,12 +459,15 @@ typedef struct { /* translation table */
 	TranslationTableOffset letterSign;
 	TranslationTableOffset numberSign;
 	TranslationTableOffset noContractSign;
+	TranslationTableOffset noNumberSign;
 	widechar seqPatterns[SEQPATTERNSIZE];
-	char *emphClasses[MAX_EMPH_CLASSES + 1];
+	char *emphClassNames[MAX_EMPH_CLASSES];
+	EmphasisClass emphClasses[MAX_EMPH_CLASSES];
+	EmphasisClass modes[MAX_MODES];
 	int seqPatternsCount;
 	widechar seqAfterExpression[SEQPATTERNSIZE];
 	int seqAfterExpressionLength;
-	TranslationTableOffset emphRules[MAX_EMPH_CLASSES + 1] /* includes caps */
+	TranslationTableOffset emphRules[MAX_EMPH_CLASSES + MAX_MODES]
 									[9]; /* 9 is the size of the EmphCodeOffset enum */
 	TranslationTableOffset begComp;
 	TranslationTableOffset endComp;
@@ -562,10 +486,9 @@ typedef struct { /* translation table */
 						[NOEMPHCHARSSIZE + 1];
 	TranslationTableOffset characters[HASHNUM]; /** Character definitions */
 	TranslationTableOffset dots[HASHNUM];		/** Dot definitions */
-	TranslationTableOffset compdotsPattern[256];
 	TranslationTableOffset forPassRules[MAXPASS + 1];
 	TranslationTableOffset backPassRules[MAXPASS + 1];
-	TranslationTableOffset forRules[HASHNUM];  /** chains of forward rules */
+	TranslationTableOffset forRules[HASHNUM];  /** Chains of forward rules */
 	TranslationTableOffset backRules[HASHNUM]; /** Chains of backward rules */
 	TranslationTableData ruleArea[1]; /** Space for storing all rules and values */
 } TranslationTableHeader;
@@ -574,7 +497,6 @@ typedef enum {
 	alloc_typebuf,
 	alloc_wordBuffer,
 	alloc_emphasisBuffer,
-	alloc_destSpacing,
 	alloc_passbuf,
 	alloc_posMapping1,
 	alloc_posMapping2,
@@ -582,21 +504,6 @@ typedef enum {
 } AllocBuf;
 
 #define MAXPASSBUF 3
-
-/* index in table->emphRules */
-typedef enum {
-	capsRule = 0,
-	emph1Rule = 1,
-	emph2Rule = 2,
-	emph3Rule = 3,
-	emph4Rule = 4,
-	emph5Rule = 5,
-	emph6Rule = 6,
-	emph7Rule = 7,
-	emph8Rule = 8,
-	emph9Rule = 9,
-	emph10Rule = 10
-} EmphRuleNumber;
 
 typedef enum {
 	begPhraseOffset = 0,
@@ -614,23 +521,20 @@ typedef enum {
  * a single bit group for representing the emphasis classes allows us
  * to do simple bit operations. */
 
+/* fields contain sums of EmphasisClass.value */
+/* MAX_EMPH_CLASSES + MAX_MODES may not exceed 16 */
 typedef struct {
-	unsigned int begin : 16; /* fields contain sums of EmphasisClass.value */
+	unsigned int begin : 16;
 	unsigned int end : 16;
 	unsigned int word : 16;
 	unsigned int symbol : 16;
 } EmphasisInfo;
 
-typedef struct {
-	unsigned int value;  /* bit field that contains a single "1" */
-	formtype typeform;   /* corresponding value in "typeforms" enum */
-	EmphRuleNumber rule; /* corresponding emphasis rules */
-} EmphasisClass;
-
 typedef enum { noEncoding, bigEndian, littleEndian, ascii8 } EncodingType;
 
 typedef struct {
 	const char *fileName;
+	const char *sourceFile;
 	FILE *in;
 	int lineNumber;
 	EncodingType encoding;
@@ -847,6 +751,9 @@ _lou_logWidecharBuf(logLevels level, const char *msg, const widechar *wbuf, int 
 
 void EXPORT_CALL
 _lou_logMessage(logLevels level, const char *format, ...);
+
+void EXPORT_CALL
+_lou_freeTableIndex(void);
 
 extern int translation_direction;
 

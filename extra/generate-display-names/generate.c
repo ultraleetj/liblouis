@@ -1,3 +1,5 @@
+#include <config.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -11,12 +13,18 @@ displayLanguage(const char *lang) {
 	return DisplayLanguage((char *)lang);
 }
 
+static const char *
+displayRegion(const char *region) {
+	return DisplayRegion((char *)region);
+}
+
 static char *
 generateDisplayName(const char *table) {
 	char *name;
 	char *language;
-	char *locale;
-	char *type;
+	char *region;
+	int typeIsLiterary = 0;
+	int typeIsComputer = 0;
 	char *dots;
 	char *contraction;
 	char *grade;
@@ -26,21 +34,170 @@ generateDisplayName(const char *table) {
 	char *n;
 	char *q;
 	char **m;
+	int tableLen = strlen(table);
 	name = (char *)malloc(100 * sizeof(*name));
 	n = name;
 	query = (char *)malloc(100 * sizeof(*query));
 	q = query;
-	locale = lou_getTableInfo(table, "locale");
-	if (!locale)
-		return NULL;
-	language = displayLanguage(locale);
-	n += sprintf(n, "%s", language);
-	q += sprintf(q, "locale:%s", locale);
-	//free(locale);
-	type = lou_getTableInfo(table, "type");
-	if (type) {
-		q += sprintf(q, " type:%s", type);
-		if (!strcmp(type, "computer")) {
+	language = lou_getTableInfo(table, "language");
+	if (!language || language[0] == '*') return NULL;
+	n += sprintf(n, "%s", displayLanguage(language));
+	q += sprintf(q, "language:%s", language);
+	region = lou_getTableInfo(table, "region");
+	if (region) q += sprintf(q, " region:%s", region);
+	{
+		char *q_save = q;
+		q += sprintf(q, " type:literary");
+		matches = lou_findTables(query);
+		if (matches) {
+			for (m = matches; *m; m++) {
+				if (!typeIsLiterary) {
+					int matchLen = strlen(*m);
+					if (tableLen < matchLen && !strcmp(&(*m)[matchLen - tableLen], table)) {
+						typeIsLiterary = 1;
+						q_save = q;
+					}
+				}
+				// free(*m);
+			}
+			// free(matches);
+		}
+		if (!typeIsLiterary) {
+			q = q_save;
+			*q = '\0';
+		}
+	}
+	if (typeIsLiterary) {
+		int uncontracted = 0;
+		int fullyContracted = 0;
+		int partiallyContracted = 0;
+		int otherUncontracted = 0;
+		int otherFullyContracted = 0;
+		int otherPartiallyContracted = 0;
+		int twoOrMorePartiallyContracted = 0;
+		contraction = lou_getTableInfo(table, "contraction");
+		if (contraction) {
+			char *q_save = q;
+			uncontracted = !strcmp(contraction, "no");
+			fullyContracted = !strcmp(contraction, "full");
+			partiallyContracted = !strcmp(contraction, "partial");
+			otherUncontracted = 0;
+			q += sprintf(q, " contraction:no");
+			matches = lou_findTables(query);
+			if (matches) {
+				if (!uncontracted || matches[0] && matches[1]) otherUncontracted = 1;
+				// for (m = matches; *m; m++) free(*m);
+				// free(matches);
+			}
+			q = q_save;
+			*q = '\0';
+			otherPartiallyContracted = 0;
+			twoOrMorePartiallyContracted = 0;
+			grade = NULL;
+			q += sprintf(q, " contraction:partial");
+			matches = lou_findTables(query);
+			if (matches) {
+				for (m = matches; *m; m++) {
+					if (!twoOrMorePartiallyContracted) {
+						char *g = lou_getTableInfo(*m, "grade");
+						if (g) {
+							if (!grade)
+								grade = g;
+							else if (strcmp(grade, g))
+								twoOrMorePartiallyContracted = 1;
+						}
+					}
+					// free(*m);
+				}
+				// free(matches);
+				if (!partiallyContracted || twoOrMorePartiallyContracted)
+					otherPartiallyContracted = 1;
+				if (twoOrMorePartiallyContracted)
+					grade = lou_getTableInfo(table, "grade");
+				else
+					grade = NULL;
+			}
+			q = q_save;
+			*q = '\0';
+			otherFullyContracted = 0;
+			q += sprintf(q, " contraction:full");
+			matches = lou_findTables(query);
+			if (matches) {
+				if (!fullyContracted || matches[0] && matches[1])
+					otherFullyContracted = 1;
+				// for (m = matches; *m; m++) free(*m);
+				// free(matches);
+			}
+			q = q_save;
+			*q = '\0';
+		}
+		dots = lou_getTableInfo(table, "dots");
+		if (dots) {
+			int otherDots = 0;
+			char *q_save = q;
+			if (contraction)
+				q += sprintf(q, " contraction:%s", contraction);
+			matches = lou_findTables(query);
+			if (matches) {
+				for (m = matches; *m; m++) {
+					if (!otherDots) {
+						char *d = lou_getTableInfo(*m, "dots");
+						if (d && strcmp(dots, d)) otherDots = 1;
+					}
+					// free(*m);
+				}
+				// free(matches);
+			}
+			if (otherDots) n += sprintf(n, " %s-dot", dots);
+			q = q_save;
+			*q = '\0';
+			q += sprintf(q, " dots:%s", dots);
+			// free(dots);
+		}
+		// free(contraction);
+		if (uncontracted) {
+			if (otherFullyContracted || otherPartiallyContracted)
+				n += sprintf(n, " uncontracted");
+		} else if (fullyContracted) {
+			if (otherPartiallyContracted) {
+				if (twoOrMorePartiallyContracted && grade)
+					n += sprintf(n, " grade %s contracted", grade);
+				else
+					n += sprintf(n, " contracted");
+			} else if (otherUncontracted) {
+				n += sprintf(n, " contracted");
+			}
+		} else if (partiallyContracted) {
+			if (twoOrMorePartiallyContracted && grade)
+				n += sprintf(n, " grade %s contracted", grade);
+			else
+				n += sprintf(n, " partially contracted");
+		}
+		// free(grade);
+	} else {
+		{
+			char *q_save = q;
+			q += sprintf(q, " type:computer");
+			matches = lou_findTables(query);
+			if (matches) {
+				for (m = matches; *m; m++) {
+					if (!typeIsComputer) {
+						int matchLen = strlen(*m);
+						if (tableLen < matchLen && !strcmp(&(*m)[matchLen - tableLen], table)) {
+							typeIsComputer = 1;
+							q_save = q;
+						}
+					}
+					// free(*m);
+				}
+				// free(matches);
+			}
+			if (!typeIsComputer) {
+				q = q_save;
+				*q = '\0';
+			}
+		}
+		if (typeIsComputer) {
 			dots = lou_getTableInfo(table, "dots");
 			if (dots) {
 				if (!strcmp(dots, "6")) {
@@ -51,130 +208,49 @@ generateDisplayName(const char *table) {
 					matches = lou_findTables(query);
 					if (matches) {
 						n += sprintf(n, " %s-dot", dots);
-						//for (m = matches; *m; m++) free(*m);
-						//free(matches);
+						// for (m = matches; *m; m++) free(*m);
+						// free(matches);
 					}
 					q = q_save;
+					*q = '\0';
 				}
 				q += sprintf(q, " dots:%s", dots);
-				//free(dots);
+				// free(dots);
 			}
-			n += sprintf(n, " %s", type);
-		} else if (!strcmp(type, "literary")) {
-			int uncontracted = 0;
-			int fullyContracted = 0;
-			int partiallyContracted = 0;
-			int otherUncontracted = 0;
-			int otherFullyContracted = 0;
-			int otherPartiallyContracted = 0;
-			int twoOrMorePartiallyContracted = 0;
-			contraction = lou_getTableInfo(table, "contraction");
-			if (contraction) {
-				char *q_save = q;
-				uncontracted = !strcmp(contraction, "no");
-				fullyContracted = !strcmp(contraction, "full");
-				partiallyContracted = !strcmp(contraction, "partial");
-				otherUncontracted = 0;
-				q += sprintf(q, " contraction:no");
-				matches = lou_findTables(query);
-				if (matches) {
-					if (!uncontracted || matches[0] && matches[1])
-						otherUncontracted = 1;
-					//for (m = matches; *m; m++) free(*m);
-					//free(matches);
-				}
-				q = q_save;
-				otherPartiallyContracted = 0;
-				twoOrMorePartiallyContracted = 0;
-				grade = NULL;
-				q += sprintf(q, " contraction:partial");
-				matches = lou_findTables(query);
-				if (matches) {
-					for (m = matches; *m; m++) {
-						if (!twoOrMorePartiallyContracted) {
-							char *g = lou_getTableInfo(*m, "grade");
-							if (g) {
-								if (!grade)
-									grade = g;
-								else if (strcmp(grade, g))
-									twoOrMorePartiallyContracted = 1;
-							}
-						}
-						//free(*m);
-					}
-					//free(matches);
-					if (!partiallyContracted || twoOrMorePartiallyContracted)
-						otherPartiallyContracted = 1;
-					if (twoOrMorePartiallyContracted)
-						grade = lou_getTableInfo(table, "grade");
-					else
-						grade = NULL;
-				}
-				q = q_save;
-				otherFullyContracted = 0;
-				q += sprintf(q, " contraction:full");
-				matches = lou_findTables(query);
-				if (matches) {
-					if (!fullyContracted || matches[0] && matches[1])
-						otherFullyContracted = 1;
-					//for (m = matches; *m; m++) free(*m);
-					//free(matches);
-				}
-				q = q_save;
-				q += sprintf(q, " contraction:%s", contraction);
-				//free(contraction);
-			}
-			dots = lou_getTableInfo(table, "dots");
-			if (dots) {
-				int otherDots = 0;
-				matches = lou_findTables(query);
-				if (matches) {
-					for (m = matches; *m; m++) {
-						if (!otherDots) {
-							char *d = lou_getTableInfo(*m, "dots");
-							if (d && strcmp(dots, d))
-								otherDots = 1;
-						}
-						//free(*m);
-					}
-					//free(matches);
-				}
-				if (otherDots)
-					n += sprintf(n, " %s-dot", dots);
-				//free(dots);
-			}
-			if (uncontracted) {
-				if (otherFullyContracted || otherPartiallyContracted)
-					n += sprintf(n, " uncontracted");
-			} else if (fullyContracted) {
-				if (otherPartiallyContracted) {
-					if (twoOrMorePartiallyContracted && grade)
-						n += sprintf(n, " grade %s contracted", grade);
-					else
-						n += sprintf(n, " contracted");
-				} else if (otherUncontracted) {
-					n += sprintf(n, " contracted");
-				}
-			} else if (partiallyContracted) {
-				if (twoOrMorePartiallyContracted && grade)
-					n += sprintf(n, " grade %s contracted", grade);
-				else
-					n += sprintf(n, " partially contracted");
-			}
-			//free(grade);
+			n += sprintf(n, " computer");
 		}
-		//free(type);
 	}
 	n += sprintf(n, " braille");
+	if (region && strlen(region) > strlen(language) &&
+			!strncmp(language, region, strlen(language)) &&
+			region[strlen(language)] == '-') {
+		char *r = displayRegion(&region[strlen(language) + 1]);
+		if (r && *r) n += sprintf(n, " as used in %s", r);
+	}
+	// free(region);
+	// free(language);
 	version = lou_getTableInfo(table, "version");
 	if (version) {
-		n += sprintf(n, " (%s standard)", version);
-		//free(version);
+		int otherVersions = 0;
+		matches = lou_findTables(query);
+		if (matches) {
+			for (m = matches; *m; m++) {
+				if (!otherVersions) {
+					char *v = lou_getTableInfo(*m, "version");
+					if (!v || strcmp(version, v)) otherVersions = 1;
+				}
+				// free(*m);
+			}
+			// free(matches);
+			if (otherVersions) n += sprintf(n, " (%s standard)", version);
+		}
+		// free(version);
 	}
 	return name;
 }
 
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv) {
 	int COLUMN_INDEX_NAME = -1;
 	int COLUMN_DISPLAY_NAME = -1;
 	int result = 0;
@@ -205,7 +281,7 @@ int main(int argc, char **argv) {
 	int tablePathLen = strlen(tablePath);
 	char **tables = lou_listTables();
 	int tableCount = 0;
-	for (char** t = tables; *t; t++) {
+	for (char **t = tables; *t; t++) {
 		tableCount++;
 		if (strncmp(tablePath, *t, tablePathLen) || (*t)[tablePathLen] != '/') {
 			fprintf(stderr, "Unexpected table location: %s\n", *t);
@@ -220,8 +296,7 @@ int main(int argc, char **argv) {
 			generate = 1;
 			cp++;
 		}
-		while (*cp == ' ')
-			cp++;
+		while (*cp == ' ') cp++;
 		if (*cp == '\0' || *cp == '\n' || *cp == '#') {
 			if (!generate)
 				continue;
@@ -230,16 +305,12 @@ int main(int argc, char **argv) {
 		}
 		char *table = cp;
 		cp++;
-		while (*cp != ' ' && *cp != '\0' && *cp != '\n' && *cp != '#')
-			cp++;
-		if (*cp != ' ')
-			goto parse_error;
+		while (*cp != ' ' && *cp != '\0' && *cp != '\n' && *cp != '#') cp++;
+		if (*cp != ' ') goto parse_error;
 		*cp = '\0';
 		cp++;
-		while (*cp == ' ')
-			cp++;
-		if (*cp == '\0' || *cp == '\n' || *cp == '#')
-			goto parse_error;
+		while (*cp == ' ') cp++;
+		if (*cp == '\0' || *cp == '\n' || *cp == '#') goto parse_error;
 		char *expectedIndexName = cp;
 		if (COLUMN_INDEX_NAME < 0)
 			COLUMN_INDEX_NAME = expectedIndexName - line;
@@ -253,20 +324,16 @@ int main(int argc, char **argv) {
 			}
 			cp++;
 		}
-		if (*cp != ' ')
-			goto parse_error;
-		while (*cp == ' ')
-			cp++;
-		if (*cp == '\0' || *cp == '\n' || *cp == '#')
-			goto parse_error;
+		if (*cp != ' ') goto parse_error;
+		while (*cp == ' ') cp++;
+		if (*cp == '\0' || *cp == '\n' || *cp == '#') goto parse_error;
 		char *expectedDisplayName = cp;
 		if (COLUMN_DISPLAY_NAME < 0)
 			COLUMN_DISPLAY_NAME = expectedDisplayName - line;
 		else if (expectedDisplayName != line + COLUMN_DISPLAY_NAME)
 			goto parse_error;
 		while (*cp != '\0' && *cp != '\n' && *cp != '#') {
-			if (*cp == ' ' && cp[1] == ' ')
-				break;
+			if (*cp == ' ' && cp[1] == ' ') break;
 			cp++;
 		}
 		*cp = '\0';
@@ -290,8 +357,12 @@ int main(int argc, char **argv) {
 			result = 1;
 		} else {
 			if (strcmp(actualIndexName, expectedIndexName) != 0) {
-				fprintf(stderr, "%s: %s != %s\n", table, actualIndexName, expectedIndexName);
-				fprintf(stderr, "   cat %s | sed 's/^\\(#-index-name: *\\).*$/\\1%s/g' > %s.tmp\n", table, expectedIndexName, table);
+				fprintf(stderr, "%s: index-name: %s != %s\n", table, actualIndexName,
+						expectedIndexName);
+				fprintf(stderr,
+						"   cat %s | sed 's/^\\(#-index-name: *\\).*$/\\1%s/g' > "
+						"%s.tmp\n",
+						table, expectedIndexName, table);
 				fprintf(stderr, "   mv %s.tmp %s\n", table, table);
 				result = 1;
 			}
@@ -302,31 +373,38 @@ int main(int argc, char **argv) {
 			result = 1;
 		} else {
 			if (strcmp(actualDisplayName, expectedDisplayName) != 0) {
-				fprintf(stderr, "%s: %s != %s\n", table, actualDisplayName, expectedDisplayName);
-				fprintf(stderr, "   cat %s | sed 's/^\\(#-display-name: *\\).*$/\\1%s/g' > %s.tmp\n", table, expectedDisplayName, table);
+				fprintf(stderr, "%s: display-name: %s != %s\n", table, actualDisplayName,
+						expectedDisplayName);
+				fprintf(stderr,
+						"   cat %s | sed 's/^\\(#-display-name: *\\).*$/\\1%s/g' > "
+						"%s.tmp\n",
+						table, expectedDisplayName, table);
 				fprintf(stderr, "   mv %s.tmp %s\n", table, table);
 				result = 1;
 			}
 			const char *generatedDisplayName = generateDisplayName(table);
 			if (!generatedDisplayName || !*generatedDisplayName) {
 				if (generate) {
-					fprintf(stderr, "No display-name could be generated for table %s\n", table);
+					fprintf(stderr, "No display-name could be generated for table %s\n",
+							table);
 					result = 1;
 				}
 			} else if (strcmp(actualDisplayName, generatedDisplayName) != 0) {
 				if (generate) {
-					fprintf(stderr, "%s: %s != %s\n", table, actualDisplayName, generatedDisplayName);
+					fprintf(stderr, "%s: generated display-name: %s != %s\n", table, actualDisplayName,
+							generatedDisplayName);
 					result = 1;
 				}
 			} else {
 				if (!generate) {
-					fprintf(stderr, "%s: %s == %s\n", table, actualDisplayName, generatedDisplayName);
+					fprintf(stderr, "%s: %s == %s\n", table, actualDisplayName,
+							generatedDisplayName);
 					result = 1;
 				}
 			}
 		}
 		continue;
-	  parse_error:
+	parse_error:
 		fprintf(stderr, "Could not parse line: %s\n", line);
 		exit(EXIT_FAILURE);
 	}

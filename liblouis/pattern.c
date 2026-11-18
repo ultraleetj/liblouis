@@ -18,6 +18,8 @@
    License along with liblouis. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -25,7 +27,7 @@
 
 #include "internal.h"
 
-//#define CHECK_OUTPUT_DEFINED
+// #define CHECK_OUTPUT_DEFINED
 
 /////
 
@@ -37,9 +39,10 @@ static TranslationTableCharacter *
 findCharOrDots(widechar c, int m, const TranslationTableHeader *table) {
 	/* Look up character or dot pattern in the appropriate
 	 * table. */
-	static TranslationTableCharacter noChar = { 0, 0, 0, CTC_Space, 32, 32, 32 };
-	static TranslationTableCharacter noDots = { 0, 0, 0, CTC_Space, LOU_DOTS, LOU_DOTS,
-		LOU_DOTS };
+	static TranslationTableCharacter noChar = { NULL, -1, 0, 0, 0, CTC_Space, 0, 0, 32, 0,
+		0 };
+	static TranslationTableCharacter noDots = { NULL, -1, 0, 0, 0, CTC_Space, 0, 0,
+		LOU_DOTS, 0, 0 };
 	TranslationTableCharacter *notFound;
 	TranslationTableCharacter *character;
 	TranslationTableOffset bucket;
@@ -53,10 +56,10 @@ findCharOrDots(widechar c, int m, const TranslationTableHeader *table) {
 	}
 	while (bucket) {
 		character = (TranslationTableCharacter *)&table->ruleArea[bucket];
-		if (character->realchar == c) return character;
+		if (character->value == c) return character;
 		bucket = character->next;
 	}
-	notFound->realchar = notFound->uppercase = notFound->lowercase = c;
+	notFound->value = c;
 	return notFound;
 }
 
@@ -122,10 +125,10 @@ enum pattern_type {
 #define RETURN 2
 #define SHOW 3
 
-#define CHECK_OUTPUT(type, ret, line, msg)                                      \
-	{                                                                           \
-		do_output(type, ret, line, input[*input_crs], input_minmax, *input_crs, \
-				input_dir, expr_data, expr_crs, not, loop_crs, loop_cnts, msg); \
+#define CHECK_OUTPUT(type, ret, line, msg)                                              \
+	{                                                                                   \
+		do_output(type, ret, line, input[*input_crs], input_minmax, *input_crs,         \
+				input_dir, expr_data, expr_crs, notOperator, loop_crs, loop_cnts, msg); \
 	}
 
 #else
@@ -458,8 +461,8 @@ static void
 do_output(const int type, const int ret, const int line,
 
 		const int input, const int input_minmax, const int input_crs, const int input_dir,
-		const widechar *expr_data, const int expr_crs, const int not, const int loop_crs,
-		const int *loop_cnts,
+		const widechar *expr_data, const int expr_crs, const int notOperator,
+		const int loop_crs, const int *loop_cnts,
 
 		const char *msg) {
 	switch (type) {
@@ -560,7 +563,7 @@ do_output(const int type, const int ret, const int line,
 	printf("%d ", input_minmax);
 	do_pad(input_minmax);
 
-	if (not)
+	if (notOperator)
 		printf("!   ");
 	else
 		printf("    ");
@@ -601,6 +604,7 @@ pattern_compile_expression(const widechar *input, const int input_max, int *inpu
 	int attrs0, attrs1;
 	int set, esc, nest, i;
 
+	if (*input_crs >= input_max) return 0;
 	switch (input[*input_crs]) {
 	case '(':
 
@@ -771,6 +775,9 @@ pattern_compile_expression(const widechar *input, const int input_max, int *inpu
 				break;
 			case '$':
 				attrs0 |= CTC_Sign;
+				break;
+			case 'm':
+				attrs0 |= CTC_Math;
 				break;
 			case '~':
 				attrs0 |= CTC_SeqDelimiter;
@@ -1186,6 +1193,8 @@ _lou_pattern_compile(const widechar *input, const int input_max, widechar *expr_
 	expr_data[0] = 2;
 	expr_data[1] = 0;
 
+	if (table == NULL || nested == NULL) return 0;
+
 	if (!pattern_compile_1(input, input_max, &input_crs, expr_data, expr_max,
 				&expr_data[0], &expr_data[1], table, nested))
 		return 0;
@@ -1303,7 +1312,7 @@ static int
 pattern_check_expression(const widechar *const input, int *input_crs,
 		const int input_minmax, const int input_dir, const widechar *const expr_data,
 		int (*hook)(const widechar input, const int data_len), widechar *hook_data,
-		const int hook_max, int expr_crs, int not, int loop_crs, int *loop_cnts,
+		const int hook_max, int expr_crs, int notOperator, int loop_crs, int *loop_cnts,
 		const TranslationTableHeader *table) {
 	int input_crs_prv, input_start, attrs, ret, i;
 	const widechar *data;
@@ -1319,19 +1328,19 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 		/* end of input expression */
 		if (EXPR_TYPE(expr_crs) == PTN_END_OF_INPUT) {
 			if (*input_crs * input_dir >= input_minmax * input_dir) {
-				if (not)
-					CHECK_OUTPUT(RETURN, 0, __LINE__,
-							"end of input failed:  no input and not ")
+				if (notOperator)
+					CHECK_OUTPUT(
+							RETURN, 0, __LINE__, "end of input failed:  no input and not")
 				else
 					CHECK_OUTPUT(RETURN, 1, __LINE__, "end of input passed:  no input")
-				return !not;
+				return !notOperator;
 			} else {
-				if (not)
+				if (notOperator)
 					CHECK_OUTPUT(
 							RETURN, 1, __LINE__, "end of input passed:  input and not")
 				else
 					CHECK_OUTPUT(RETURN, 0, __LINE__, "end of input failed:  input")
-				return not;
+				return notOperator;
 			}
 		}
 
@@ -1342,7 +1351,7 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 
 				attrs = (EXPR_DATA_0(expr_crs) << 16);
 				if (attrs & CTC_EndOfInput) {
-					if (not) {
+					if (notOperator) {
 						CHECK_OUTPUT(RETURN, 0, __LINE__,
 								"attributes failed:  end of input attribute:  not")
 						return 0;
@@ -1381,7 +1390,7 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 
 		case PTN_NOT:
 
-			not = !not;
+			notOperator = !notOperator;
 			expr_crs = EXPR_DATA_0(expr_crs);
 			CHECK_OUTPUT(SHOW, 0, __LINE__, "not next")
 			break;
@@ -1412,8 +1421,8 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 			/* start loop expression */
 			input_crs_prv = *input_crs;
 			ret = pattern_check_expression(input, input_crs, input_minmax, input_dir,
-					expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs), not,
-					loop_crs, loop_cnts, table);
+					expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs),
+					notOperator, loop_crs, loop_cnts, table);
 			if (ret) {
 				CHECK_OUTPUT(RETURN, 1, __LINE__, "loop passed")
 				return 1;
@@ -1445,8 +1454,8 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 			/* start optional expression */
 			CHECK_OUTPUT(CALL, 0, __LINE__, "option start")
 			if (pattern_check_expression(input, input_crs, input_minmax, input_dir,
-						expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs), not,
-						loop_crs, loop_cnts, table)) {
+						expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs),
+						notOperator, loop_crs, loop_cnts, table)) {
 				CHECK_OUTPUT(RETURN, 1, __LINE__, "option passed")
 				return 1;
 			}
@@ -1466,8 +1475,8 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 			/* start first expression */
 			CHECK_OUTPUT(CALL, 0, __LINE__, "or 1 start")
 			if (pattern_check_expression(input, input_crs, input_minmax, input_dir,
-						expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs), not,
-						loop_crs, loop_cnts, table)) {
+						expr_data, hook, hook_data, hook_max, EXPR_DATA_0(expr_crs),
+						notOperator, loop_crs, loop_cnts, table)) {
 				CHECK_OUTPUT(RETURN, 1, __LINE__, "or 1 passed")
 				return 1;
 			}
@@ -1490,11 +1499,11 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 
 			ret = pattern_check_attrs(
 					input[*input_crs], EXPR_CONST_DATA(expr_crs), table);
-			if (ret && not) {
+			if (ret && notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "attributes failed:  not");
 				return 0;
 			}
-			if (!ret && !not) {
+			if (!ret && !notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "attributes failed");
 				return 0;
 			}
@@ -1506,11 +1515,11 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 		case PTN_CHARS:
 
 			ret = pattern_check_chars(input[*input_crs], EXPR_CONST_DATA(expr_crs));
-			if (ret && not) {
+			if (ret && notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "chars failed:  not");
 				return 0;
 			}
-			if (!ret && !not) {
+			if (!ret && !notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "chars failed");
 				return 0;
 			}
@@ -1532,11 +1541,11 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 
 			/* call hook function */
 			ret = hook(input[*input_crs], data[0]);
-			if (ret && not) {
+			if (ret && notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "hook failed:  not");
 				return 0;
 			}
-			if (!ret && !not) {
+			if (!ret && !notOperator) {
 				CHECK_OUTPUT(RETURN, 0, __LINE__, "hook failed");
 				return 0;
 			}
@@ -1579,7 +1588,7 @@ pattern_check_expression(const widechar *const input, int *input_crs,
 			}
 
 			/* returning not */
-			if (EXPR_TYPE(expr_crs) == PTN_NOT) not = !not;
+			if (EXPR_TYPE(expr_crs) == PTN_NOT) notOperator = !notOperator;
 
 			expr_crs = EXPR_NXT(expr_crs);
 

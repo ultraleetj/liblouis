@@ -4,20 +4,21 @@
 # ---------------------------------------------
 
 # last undefined rule wins
-table: |
+display: |
   display 1 1
   display 2 2
+table: |
   undefined 1
   undefined 2
 tests:
   - [x, 2]
 
-# first character definition rule wins, except in compbrlAtCursor mode
-# see https://github.com/liblouis/liblouis/issues/869
-table: |
+# the first character definition rule wins
+display: |
   display 1 1
   display 2 2
   display 3 3
+table: |
   sign P 1
   sign P 2
   sign P 3
@@ -25,64 +26,125 @@ flags: {testmode: forward}
 tests:
   - - "P"
     - "1"
+
+# ... also in compbrlAtCursor mode
+# (original issue: see https://github.com/liblouis/liblouis/issues/869)
   - - "P"
-    - "3"
+    - "1"
     - mode: [compbrlAtCursor]
       cursorPos: [0,0]
 
-# first character definition rule wins ...
+# ... also if a context rule with * in the action part is matched
+display: |
+  display 1 1
+  display 2 2
+  display 3 3
 table: |
-  include tables/unicode-without-blank.dis
+  sign P 1
+  sign P 2
+  sign P 3
+  noback context ["P"] *
+flags: {testmode: forward}
+tests:
+  - - "P"
+    - "1"
+
+# the first character definition rule wins
+display: tables/unicode-without-blank.dis
+table: |
   include tables/spaces.uti
-  uplow Aa 1
+  lowercase a 1
+  uppercase A 1
   uppercase B 12
   lowercase b 12
-  uplow Cc 14
-  uplow Dd 145
-  uplow Ee 15
-  uplow Ff 124
-  uplow Gg 1245
-  uplow Hh 125,125
-  
+  lowercase c 14
+  uppercase C 14
+  lowercase d 145
+  uppercase D 145
+  lowercase e 15
+  uppercase E 15
+  lowercase f 124
+  uppercase F 124
+  lowercase g 1245
+  uppercase G 1245
+  lowercase h 125
+  uppercase H 125
   uppercase B 1
   lowercase b 1
-  uplow Dd 14
-  uplow Ff 15,15
-  uplow Hh 1245,1245
+  lowercase d 14
+  uppercase D 14
+  lowercase f 15
+  uppercase F 15
+  lowercase h 1245
+  uppercase H 1245
 tests:
   - - Aa Bb Cc Dd Ee Ff Gg Hh
     - ⠁⠁ ⠃⠃ ⠉⠉ ⠙⠙ ⠑⠑ ⠋⠋ ⠛⠛ ⠓⠓
 
-# ... except if capsletter is defined, in which case the last
-# "uppercase X" wins, and the uppercase part of the last "uplow Xx"
-# wins
-# see https://github.com/liblouis/liblouis/issues/384
+# if "X" is defined as "uppercase X ...", the first "uppercase X" wins
+# if "X" is defined as "base uppercase X x", the first definition of "x" wins
+# (original issue: https://github.com/liblouis/liblouis/issues/384)
+display: tables/unicode-without-blank.dis
 table: |
-  include tables/unicode-without-blank.dis
   include tables/spaces.uti
-  uplow Aa 1
+  lowercase a 1
+  base uppercase A a
   uppercase B 12
   lowercase b 12
-  uplow Cc 14
-  uplow Dd 145
-  uplow Ee 15
-  uplow Ff 124
-  uplow Gg 1245
-  uplow Hh 125,125
+  lowercase c 14
+  base uppercase C c
+  lowercase d 145
+  base uppercase D d
+  lowercase e 15
+  base uppercase E e
+  lowercase f 124
+  base uppercase F f
+  lowercase g 1245
+  base uppercase G g
+  lowercase h 125
+  base uppercase H h
   capsletter 6
-  
   uppercase B 1
   lowercase b 1
-  uplow Dd 14
-  uplow Ff 15,15
-  uplow Hh 1245,1245
+  lowercase d 14
+  lowercase f 15
+  lowercase h 1245
 tests:
   - - Aa Bb Cc Dd Ee Ff Gg Hh
-    - ⠠⠁⠁ ⠠⠁⠃ ⠠⠉⠉ ⠠⠉⠙ ⠠⠑⠑ ⠠⠑⠋ ⠠⠛⠛ ⠠⠛⠓
+    - ⠠⠁⠁ ⠠⠃⠃ ⠠⠉⠉ ⠠⠙⠙ ⠠⠑⠑ ⠠⠋⠋ ⠠⠛⠛ ⠠⠓⠓
+# same but without capsletter
+display: tables/unicode-without-blank.dis
+table: |
+  include tables/spaces.uti
+  lowercase a 1
+  base uppercase A a
+  uppercase B 12
+  lowercase b 12
+  lowercase c 14
+  base uppercase C c
+  lowercase d 145
+  base uppercase D d
+  lowercase e 15
+  base uppercase E e
+  lowercase f 124
+  base uppercase F f
+  lowercase g 1245
+  base uppercase G g
+  lowercase h 125
+  base uppercase H h
+  uppercase B 1
+  lowercase b 1
+  lowercase d 14
+  lowercase f 15
+  lowercase h 1245
+tests:
+  - - Aa Bb Cc Dd Ee Ff Gg Hh
+    - ⠁⠁ ⠃⠃ ⠉⠉ ⠙⠙ ⠑⠑ ⠋⠋ ⠛⠛ ⠓⠓
 
 # for printing escape sequences for undefined characters, only
 # character definitions that map to a single dot are used and the
 # first definition wins. display rules are ignored.
+display: tables/unicode-without-blank.dis
 table: |
   include tables/unicode-without-blank.dis
   digit 0 356

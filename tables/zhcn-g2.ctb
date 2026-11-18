@@ -1,11 +1,15 @@
 # liblouis: Chinese double spelling Braille.
 #
-#-index-name:  Mandarin, mainland China, 2-cell
-#-display-name: Two-cell Chinese braille
+#-index-name:  Mandarin, mainland China, double-phonic
+#-display-name: Chinese double-phonic braille
 #
-#+locale:cmn-CN
+#+language:cmn
+#+region:cmn-CN
 #+type:literary
 #+system:cmn-two-cell
+# Marked as "direction:forward" by Bue Vester-Andersen
+# as tests only run forward.
+#direction:forward
 #
 # Version 2018-09-10
 # Optimize the display of Braille.
@@ -26407,6 +26411,16 @@ noback correct $w[$s] ?
 # Stop
 #
 # Quoted the en-ueb-g1.ctb
+digit 0 245
+digit 1 1
+digit 2 12
+digit 3 14
+digit 4 145
+digit 5 15
+digit 6 124
+digit 7 1245
+digit 8 125
+digit 9 24
 include en-ueb-chardefs.uti
 include en-ueb-math.ctb
 #

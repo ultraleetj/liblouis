@@ -1,6 +1,7 @@
 EXTRA_DIST =					\
 	attribute.yaml				\
 	back_cont_then_punc.yaml		\
+	backtranslation_emphasis.yaml		\
 	before_begmidword.yaml			\
 	begcaps_endcaps.yaml			\
 	capitalization.yaml			\
@@ -12,6 +13,8 @@ EXTRA_DIST =					\
 	broken_equals_operand.yaml		\
 	emphasis.yaml				\
 	example_test.yaml			\
+	face-with-tears-of-joy.yaml             \
+	face-with-tears-of-joy-ucs4.yaml        \
 	hyphenation.dic				\
 	hyphenation.yaml			\
 	hyphenation_nocross_harness.yaml	\
@@ -21,7 +24,11 @@ EXTRA_DIST =					\
 	issue-332_hyph.dic			\
 	issue-479.yaml				\
 	issue-615.yaml				\
+	issue-963.yaml				\
 	letterDefTest_harness.yaml		\
+	macro.yaml				\
+	macro.utb				\
+	match-vs-always.yaml			\
 	multipass-backward.yaml			\
 	multipass-forward.yaml			\
 	multipass.yaml				\
@@ -29,12 +36,16 @@ EXTRA_DIST =					\
 	multipass-vs-match.yaml			\
 	multipass-vs-match_common.uti		\
 	new_emph.yaml				\
-	noletsignafter.yaml			\
+	nonumsign.yaml				\
 	numericmode.yaml			\
 	pass0_typebuf.yaml			\
+	precedence.yaml				\
 	present_progressive.yaml		\
 	repword.yaml				\
 	squash_space.yaml			\
 	syllable.yaml				\
 	undefined.yaml				\
 	various-regression-tests.yaml
+
+clean-local:
+	rm -rf *.log *.trs
